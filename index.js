@@ -21,6 +21,9 @@ app.use(
   })
 );
 
+import billRoute from "./routes/bill-route.js";
+app.use('/bill',billRoute)
+
 app.listen(port, () => {
   console.log(`server is listening on port ${port}`);
 });
