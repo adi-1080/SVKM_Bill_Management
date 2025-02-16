@@ -1,10 +1,11 @@
 import mongoose from "mongoose";
 
+
+//redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema({
     srNo: { type: Number, auto: true },
     srNoOld: { type: Number, auto: true },
     typeOfInv: { type: String, required: true },
-    region: { type: String, required: true },
     projectDescription: { type: String, required: true },
     vendorNo: { type: String, required: true },
     vendorName: { type: String, required: true },
@@ -22,7 +23,6 @@ const billSchema = new mongoose.Schema({
     proformaInvRecdBy: { type: String },
     taxInvNo: { type: String },
     taxInvDate: { type: Date },
-    currency: { type: String, required: true },
     taxInvAmt: { type: Number },
     taxInvRecdAtSite: { type: Date },
     taxInvRecdBy: { type: String },
@@ -70,9 +70,69 @@ const billSchema = new mongoose.Schema({
         paymentAmt: Number,
         remarksAcctsDept: String,
         status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
+    },
+    billDate: { type: Date, required: true },
+    vendor: { type: mongoose.Schema.Types.ObjectId, ref: "VendorMaster", required: true },
+    amount: { type: Number, required: true },
+    currency: { 
+        type: String, 
+        enum: ["INR", "USD", "RMB", "EURO"],
+        required: true
+    },
+    region: { 
+        type: String, 
+        enum: [
+            "MUMBAI",
+            "KHARGHAR",
+            "AHMEDABAD",
+            "BANGALURU",
+            "BHUBANESHWAR",
+            "CHANDIGARH",
+            "DELHI",
+            "NOIDA",
+            "NAGPUR",
+            "GANSOLI",
+            "HOSPITAL",
+            "DHULE",
+            "SHIRPUR",
+            "INDORE",
+            "HYDERABAD"
+        ],
+        required: true
+    },
+    natureOfWork: { 
+        type: String, 
+        enum: [
+            "Proforma Invoice",
+            "Credit note",
+            "Hold/Ret Release",
+            "Direct FI Entry",
+            "Advance/LC/BG",
+            "Petty cash",
+            "Imports",
+            "Materials",
+            "Equipments",
+            "IT related",
+            "IBMS",
+            "Consultancy bill",
+            "Civil Works",
+            "STP Work",
+            "MEP Work",
+            "HVAC Work",
+            "Fire Fighting Work",
+            "Petrol/Diesel",
+            "Painting work",
+            "Utility Work",
+            "Site Infra",
+            "Carpentry",
+            "Housekeeping/Security",
+            "Overheads",
+            "Others"
+        ],
+        required: true
     }
 }, {timestamps: true});
 
-const Bill = mongoose.model('Bill', billSchema)
+const Bill = mongoose.model('Bill', billSchema);
 
 export default Bill;
