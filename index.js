@@ -3,11 +3,11 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { connectDB } from "./utils/db.js";
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./utils/swagger.js";
 
 const app = express();
-
 const port = process.env.PORT || 5000;
-
 connectDB();
 
 app.use(express.json());
@@ -17,12 +17,15 @@ app.use(
   cors({
     credentials: true,
     origin: process.env.CLIENT_URL,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE"]
   })
 );
 
 import billRoute from "./routes/bill-route.js";
-app.use('/bill',billRoute)
+app.use('/bill', billRoute);
+
+// Swagger docs route
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.listen(port, () => {
   console.log(`server is listening on port ${port}`);

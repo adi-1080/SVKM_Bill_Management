@@ -1,3 +1,17 @@
+/**
+ * @swagger
+ * /bill/bills:
+ *   post:
+ *     summary: Create a new bill
+ *     responses:
+ *       201:
+ *         description: Bill created successfully
+ *   get:
+ *     summary: Retrieve all bills
+ *     responses:
+ *       200:
+ *         description: A list of bills
+ */
 import billController from "../controllers/bill-controller.js";
 import express from "express";
 
