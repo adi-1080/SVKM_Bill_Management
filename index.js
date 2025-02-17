@@ -22,7 +22,10 @@ app.use(
 );
 
 import billRoute from "./routes/bill-route.js";
+import userRoute from "./routes/user-route.js";
+
 app.use('/bill', billRoute);
+app.use('/users', userRoute);
 
 // Swagger docs route
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
