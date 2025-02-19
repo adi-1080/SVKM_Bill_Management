@@ -22,7 +22,9 @@ app.use(
 );
 
 import billRoute from "./routes/bill-route.js";
+import reportRoute from "./routes/report-route.js";
 app.use('/bill', billRoute);
+app.use('/report',reportRoute);
 
 // Swagger docs route
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
