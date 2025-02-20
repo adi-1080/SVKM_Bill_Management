@@ -1,99 +1,47 @@
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
-import xml2js from "xml2js";
 import Bill from "../models/bill-model.js";
 
-// Define comprehensive columns for both Excel and PDF
-const reportColumns = {
-  essential: [
-    { header: "Bill ID", key: "_id", width: 30 },
-    { header: "Invoice Type", key: "typeOfInv", width: 20 },
-    { header: "Project Description", key: "projectDescription", width: 30 },
-    { header: "Vendor Name", key: "vendorName", width: 25 },
-    { header: "Amount", key: "amount", width: 15 },
-    { header: "Bill Date", key: "billDate", width: 20 },
-    { header: "Status", key: "status", width: 15 },
-    { header: "Region", key: "region", width: 20 },
-    { header: "Nature of Work", key: "natureOfWork", width: 25 }
-  ],
-  detailed: [
-    { header: "PO Number", key: "poNo", width: 20 },
-    { header: "PO Amount", key: "poAmt", width: 15 },
-    { header: "Tax Invoice No", key: "taxInvNo", width: 20 },
-    { header: "Tax Invoice Amount", key: "taxInvAmt", width: 20 },
-    { header: "Department", key: "department", width: 20 },
-    { header: "GST Number", key: "gstNumber", width: 25 },
-    { header: "Currency", key: "currency", width: 15 }
-  ]
-};
-
-// Helper function to format values
-const formatValue = (value, key) => {
-  if (!value) return "";
+// Utility to flatten bill object with nested fields
+const flattenBill = (bill) => {
+  const flatten = (obj, prefix = '') => {
+    return Object.keys(obj).reduce((acc, k) => {
+      const pre = prefix ? `${prefix}.` : '';
+      if (typeof obj[k] === 'object' && obj[k] !== null && !(obj[k] instanceof Date)) {
+        Object.assign(acc, flatten(obj[k], pre + k));
+      } else {
+        acc[pre + k] = obj[k];
+      }
+      return acc;
+    }, {});
+  };
   
-  switch (key) {
-    case "billDate":
-    case "poDate":
-    case "taxInvDate":
-      return new Date(value).toLocaleDateString();
-    case "amount":
-    case "poAmt":
-    case "taxInvAmt":
-      return value.toLocaleString('en-IN', {
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 2
-      });
-    default:
-      return value.toString();
-  }
+  const { _id, ...rest } = bill;
+  return flatten(rest);
 };
 
-// XML Parser for Excel upload
-export const parseExcelXML = async (xmlString) => {
-  const parser = new xml2js.Parser({ explicitArray: false });
-  try {
-    const result = await parser.parseStringPromise(xmlString);
-    // Assuming the XML structure has a root element and rows
-    const rows = result.Workbook.Worksheet.Table.Row;
-    
-    // Map XML data to bill schema
-    return rows.map(row => {
-      const cells = row.Cell;
-      return {
-        typeOfInv: cells[0]?.Data?._,
-        projectDescription: cells[1]?.Data?._,
-        vendorName: cells[2]?.Data?._,
-        amount: parseFloat(cells[3]?.Data?._ || 0),
-        // Add more mappings as needed
-      };
-    }).filter(bill => bill.typeOfInv); // Filter out empty rows
-  } catch (error) {
-    throw new Error(`Failed to parse XML: ${error.message}`);
-  }
-};
-
+// Excel Report - All Fields with improved formatting
 export const generateExcelReport = async (billIds) => {
   const bills = await Bill.find({ _id: { $in: billIds } }).lean();
-  if (!bills.length) {
-    throw new Error("No bills found for the provided IDs");
-  }
-
+  console.log("Total bills : ", bills.length);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Bills Report");
-  
-  // Combine essential and detailed columns for Excel
-  const allColumns = [...reportColumns.essential, ...reportColumns.detailed];
-  worksheet.columns = allColumns;
 
-  // Style header row
-  worksheet.getRow(1).eachCell((cell) => {
-    cell.font = { bold: true, size: 12 };
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFB0C4DE' }
-    };
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  // Generate dynamic columns with improved headers
+  const sample = flattenBill(bills[0]);
+  const columns = Object.keys(sample).map(key => ({
+    header: key.split('.').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+    key,
+    width: Math.min(Math.max(key.length * 1.8, 20), 35) // Increased width for better readability
+  }));
+
+  worksheet.columns = columns;
+
+  // Enhanced header styling
+  worksheet.getRow(1).eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F497D' } };
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     cell.border = {
       top: { style: 'thin' },
       bottom: { style: 'thin' },
@@ -102,111 +50,173 @@ export const generateExcelReport = async (billIds) => {
     };
   });
 
-  // Add data rows with formatting
-  bills.forEach((bill) => {
-    const rowData = {};
-    allColumns.forEach(col => {
-      rowData[col.key] = formatValue(bill[col.key], col.key);
-    });
-    worksheet.addRow(rowData);
-  });
+  // Add data with improved formatting
+  bills.forEach((bill, index) => {
+    const flatBill = flattenBill(bill);
+    const row = worksheet.addRow(Object.values(flatBill).map(value => 
+      typeof value === 'number' && !Number.isInteger(value) ? 
+      Number(value.toFixed(2)) : 
+      value
+    ));
 
-  // Style data rows
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber > 1) { // Skip header
-      row.eachCell((cell) => {
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.border = {
-          top: { style: 'thin' },
-          bottom: { style: 'thin' },
-          left: { style: 'thin' },
-          right: { style: 'thin' }
-        };
+    // Alternate row colors for better readability
+    if (index % 2 === 0) {
+      row.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
       });
     }
   });
 
-  // Auto-fit columns
-  worksheet.columns.forEach(column => {
-    column.width = Math.max(column.width, 15);
+  // Enhanced cell formatting
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber > 1) {
+      row.eachCell(cell => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          bottom: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+        if (typeof cell.value === 'number') {
+          cell.numFmt = cell.value % 1 === 0 ? '#,##0' : '#,##0.00';
+          cell.alignment = { horizontal: 'right' };
+        }
+        if (cell.value instanceof Date) {
+          cell.numFmt = 'dd-mmm-yyyy';
+        }
+      });
+    }
   });
 
-  return await workbook.xlsx.writeBuffer();
+  return workbook.xlsx.writeBuffer();
 };
 
+// PDF Report - One bill per page with improved layout
 export const generatePDFReport = async (billIds) => {
   const bills = await Bill.find({ _id: { $in: billIds } }).lean();
-  if (!bills.length) {
-    throw new Error("No bills found for the provided IDs");
-  }
-
-  const doc = new PDFDocument({ 
-    margin: 40, 
-    size: "A4", 
-    layout: "landscape"
-  });
-
-  let buffers = [];
-  doc.on("data", buffers.push.bind(buffers));
-  const endPromise = new Promise(resolve => doc.on("end", resolve));
-
-  // Add header with company logo/name if needed
-  doc.fontSize(20).text("Bills Report", { align: "center" });
-  doc.moveDown(1);
-
-  // Use only essential columns for PDF to keep it concise
-  const columns = reportColumns.essential;
+  console.log("Total bills : ", bills.length);
+  const doc = new PDFDocument({ margin: 50, size: 'A4' });
   
-  // Calculate dimensions
-  const pageWidth = doc.page.width - 80;
-  const columnWidth = pageWidth / columns.length;
-  const startX = 40;
-  let startY = 100;
+  let buffers = [];
+  doc.on('data', buffers.push.bind(buffers));
+  const endPromise = new Promise(resolve => doc.on('end', resolve));
 
-  // Draw header
-  doc.fontSize(12).font("Helvetica-Bold");
-  columns.forEach((col, i) => {
-    doc.text(
-      col.header,
-      startX + (i * columnWidth),
-      startY,
-      { width: columnWidth, align: "center" }
-    );
-  });
-
-  // Draw header line
-  startY += 20;
-  doc.moveTo(startX, startY).lineTo(startX + pageWidth, startY).stroke();
-
-  // Draw data rows
-  doc.fontSize(10).font("Helvetica");
-  bills.forEach((bill, rowIndex) => {
-    startY += 5;
+  const drawBill = (bill) => {
+    // Header
+    doc.rect(50, 50, doc.page.width - 100, 60)
+       .fillAndStroke('#F8F8F8', '#CCCCCC');
     
-    // Check if we need a new page
-    if (startY > doc.page.height - 50) {
+    doc.fontSize(16)
+       .fillColor('#1F497D')
+       .font('Helvetica-Bold')
+       .text(`Bill Details: ${bill.typeOfInv}`, 70, 70);
+
+    // Status badge
+    const status = bill.status?.toUpperCase() || 'N/A';
+    const statusColor = status === 'PAID' ? '#00B050' : '#FFC000';
+    const statusWidth = doc.widthOfString(status) + 40;
+    doc.rect(doc.page.width - statusWidth - 70, 70, statusWidth, 24)
+       .fillAndStroke(statusColor, statusColor);
+    doc.fontSize(12)
+       .fillColor('#FFFFFF')
+       .text(status, doc.page.width - statusWidth - 50, 75);
+
+    // Main content layout
+    const startY = 140;
+    const col1X = 70;
+    const col2X = doc.page.width / 2 + 20;
+    let currentY = startY;
+
+    // Section styling
+    const section = (title, fields) => {
+      doc.fontSize(14)
+         .fillColor('#1F497D')
+         .font('Helvetica-Bold')
+         .text(title, col1X, currentY);
+      currentY += 30;
+
+      fields.forEach(([label, value]) => {
+        const formattedValue = formatValue(value);
+        
+        // Left column
+        doc.fontSize(11)
+           .font('Helvetica-Bold')
+           .fillColor('#333333')
+           .text(label + ':', col1X, currentY, { continued: true })
+           .font('Helvetica')
+           .text(' ' + formattedValue, { width: 200 });
+
+        currentY += 25;
+      });
+      currentY += 20;
+    };
+
+    // Sections with single column layout for clarity
+    section('Vendor Information', [
+      ['Name', bill.vendorName],
+      ['GST Number', bill.gstNumber],
+      ['PO Number', bill.poNo],
+      ['Department', bill.department]
+    ]);
+
+    section('Financial Details', [
+      ['PO Amount', formatCurrency(bill.poAmt)],
+      ['Tax Invoice Amount', formatCurrency(bill.taxInvAmt)],
+      ['Advance Amount', formatCurrency(bill.advanceAmt)],
+      ['Total Amount', formatCurrency(bill.amount)]
+    ]);
+
+    section('Key Dates', [
+      ['Bill Date', formatDate(bill.billDate)],
+      ['Payment Date', formatDate(bill.accountsDept?.paymentDate)],
+      ['MIGO Date', formatDate(bill.migoDetails?.date)],
+      ['Approval Date', formatDate(bill.approvalDetails?.directorApproval?.dateGiven)]
+    ]);
+
+    section('Process Status', [
+      ['Quality Engineer', bill.qualityEngineer?.name],
+      ['QS Inspection', bill.qsInspection?.name],
+      ['Final Approval', bill.approvalDetails?.directorApproval?.status],
+      ['Payment Status', bill.accountsDept?.status]
+    ]);
+  };
+
+  bills.forEach((bill, index) => {
+    if (index > 0) {
       doc.addPage();
-      startY = 50;
     }
-
-    columns.forEach((col, i) => {
-      const value = formatValue(bill[col.key], col.key);
-      doc.text(
-        value,
-        startX + (i * columnWidth),
-        startY,
-        { width: columnWidth, align: "center" }
-      );
-    });
-
-    startY += 20;
-    doc.moveTo(startX, startY)
-       .lineTo(startX + pageWidth, startY)
-       .strokeColor("#dddddd")
-       .stroke();
+    drawBill(bill);
   });
 
   doc.end();
   await endPromise;
   return Buffer.concat(buffers);
+};
+
+// Enhanced formatting helpers
+const formatCurrency = (value) => {
+  if (!value) return 'N/A';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2
+  }).format(value);
+};
+
+const formatDate = (value) => {
+  if (!value) return 'N/A';
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+const formatValue = (value) => {
+  if (value === null || value === undefined) return 'N/A';
+  if (typeof value === 'number') return formatCurrency(value);
+  if (value instanceof Date) return formatDate(value);
+  return value.toString();
 };

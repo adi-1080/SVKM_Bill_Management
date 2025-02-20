@@ -1,14 +1,32 @@
 import { generateExcelReport, generatePDFReport } from "../utils/report-generator.js";
+import mongoose from "mongoose";
 
 const generateReport = async (req, res) => {
   try {
     const { billIds, format = 'excel' } = req.body;
 
-    // Input validation
-    if (!billIds || !Array.isArray(billIds) || billIds.length === 0) {
+    // Validate and normalize billIds input
+    let ids = [];
+    if (typeof billIds === 'string') {
+      ids = billIds.split(',').map(id => id.trim());
+    } else if (Array.isArray(billIds)) {
+      ids = [...billIds];
+    }
+
+    // Validate IDs format
+    if (!ids.length) {
       return res.status(400).json({ 
         success: false, 
-        message: "billIds must be a non-empty array" 
+        message: "billIds must contain at least one valid ID" 
+      });
+    }
+
+    const invalidIds = ids.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid bill ID format",
+        invalidIds
       });
     }
 
@@ -19,21 +37,20 @@ const generateReport = async (req, res) => {
 
     switch (format.toLowerCase()) {
       case 'pdf':
-        fileBuffer = await generatePDFReport(billIds);
+        fileBuffer = await generatePDFReport(ids);
         fileName = `bills-report-${timestamp}.pdf`;
         res.setHeader("Content-Type", "application/pdf");
         break;
         
       case 'excel':
       default:
-        fileBuffer = await generateExcelReport(billIds);
+        fileBuffer = await generateExcelReport(ids);
         fileName = `bills-report-${timestamp}.xlsx`;
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         break;
     }
 
     res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
-    res.setHeader("Content-Length", fileBuffer.length);
     return res.send(fileBuffer);
 
   } catch (error) {
