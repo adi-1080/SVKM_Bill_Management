@@ -1,4 +1,14 @@
 import Bill from '../models/bill-model.js'; 
+import {getBillFields} from '../models/bill-model.js';
+
+const getBillSchemaFields = async (req, res) => {
+    try {
+        const fields = getBillFields();
+        res.status(200).json(fields);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
 const createBill = async (req, res) => {
     try {
@@ -60,5 +70,6 @@ export default {
     getBill,
     getBills,
     updateBill,
-    deleteBill
+    deleteBill,
+    getBillSchemaFields,
 };

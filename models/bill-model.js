@@ -130,104 +130,208 @@
 import mongoose from "mongoose";
 
 //redundant master tables ko isme daal diya
-const billSchema = new mongoose.Schema({
-    srNo: { type: Number, auto: true },
-    srNoOld: { type: Number, auto: true },
-    typeOfInv: { type: String, required: true },
+const billSchema = mongoose.Schema({
+
+    // White
+    srNo: {type: String, auto: true},
+    srNoOld: {type: String, auto: true},
+
+    // General & Vendor Details (Yellow)
+    typeOfInv: { type: String, required: true,},
+    region: { 
+        type: String,
+        enum: [
+        "MUMBAI",
+        "KHARGHAR",
+        "AHMEDABAD",
+        "BANGALURU",
+        "BHUBANESHWAR",
+        "CHANDIGARH",
+        "DELHI",
+        "NOIDA",
+        "NAGPUR",
+        "GANSOLI",
+        "HOSPITAL",
+        "DHULE",
+        "SHIRPUR",
+        "INDORE",
+        "HYDERABAD"
+        ],
+        required: true, },
     projectDescription: { type: String, required: true },
-    vendorNo: { type: String, required: true },
-    vendorName: { type: String, required: true },
-    gstNumber: { type: String, required: true },
-    compliance206AB: { type: String, required: true },
+    vendorNo: { type: mongoose.Schema.Types.ObjectId, required: true }, 
+    vendorName: { type: String, required: true }, 
+    gstNumber: { type: String, required: true}, 
+    compliance206AB: { type: String, required: true }, 
     panStatus: { type: String, required: true },
-    poCreated: { type: String, enum: ["Yes", "No"], required: true },
+
+    // PO Details
+    poCreated: { type: String, required: true, enum: ["Yes", "No"] },
     poNo: { type: String },
     poDate: { type: Date },
     poAmt: { type: Number },
+
+    // Proforma Invoice Details
     proformaInvNo: { type: String },
     proformaInvDate: { type: Date },
     proformaInvAmt: { type: Number },
     proformaInvRecdAtSite: { type: Date },
     proformaInvRecdBy: { type: String },
+
+    // Tax Invoice Details
     taxInvNo: { type: String },
     taxInvDate: { type: Date },
+    currency: { type: String, required: true, enum: ["INR", "USD", "EUR"] }, 
     taxInvAmt: { type: Number },
     taxInvRecdAtSite: { type: Date },
     taxInvRecdBy: { type: String },
+
+    // Additional Fields
     department: { type: String },
     remarksBySiteTeam: { type: String },
-    attachment: { type: String },
-    advanceDate: { type: Date },
-    advanceAmt: { type: Number },
-    advancePercentage: { type: Number },
-    advRequestEnteredBy: { type: String },
-    qualityEngineer: { name: String, dateGiven: Date },
-    qsInspection: { name: String, dateGiven: Date },
-    qsMeasurementCheck: { name: String, dateGiven: Date },
-    vendorFinalInv: { dateGiven: Date },
-    qsCOP: { name: String, dateGiven: Date },
-    copDetails: { date: Date, amount: Number },
-    remarksByQSTeam: { type: String },
-    migoDetails: { date: Date, no: String, amount: Number, doneBy: String },
-    invReturnedToSite: { type: Date },
-    siteEngineer: { name: String, dateGiven: Date },
-    architect: { name: String, dateGiven: Date },
-    siteIncharge: { name: String, dateGiven: Date },
-    remarks: { type: String },
-    siteOfficeDispatch: { name: String, dateGiven: Date },
-    status: { type: String, enum: ["accept", "reject", "hold", "issue"] },
-    pimoMumbai: { dateGiven: Date, dateReceived: Date, receivedBy: String },
-    qsMumbai: { name: String, dateGiven: Date },
-    itDept: { name: String, dateGiven: Date },
-    sesDetails: { no: String, amount: Number, date: Date },
-    approvalDetails: { 
-        directorApproval: { dateGiven: Date, dateReceived: Date },
-        remarksPimoMumbai: String
+    attachment: { type: String }, 
+
+    // White
+    advance_date: {type: Date},
+    advance_amt: {type: Number},
+    advance_percentage: {type: Number},
+    advance_request_entered_by: {type: String},
+
+    // Blue
+    qualityEngineer: {
+        dateGiven: { type: Date },
+        name: { type: String }
     },
-    accountsDept: {
-        dateGiven: Date,
-        receivedBy: String,
-        dateReceived: Date,
-        returnedToPimo: Date,
-        receivedBack: Date,
-        paymentInstructions: String,
-        remarksForPayInstructions: String,
-        f110Identification: String,
-        paymentDate: Date,
-        accountsIdentification: String,
-        paymentAmt: Number,
-        remarksAcctsDept: String,
-        status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
+
+    // Green
+    qsDetails: {
+        dateGivenForInspection: { type: Date },
+        name: { type: String },
+        checkedWithMeasurementDate: { type: Date }
     },
-    billDate: { type: Date, required: true },
-    vendor: { type: mongoose.Schema.Types.ObjectId, ref: "VendorMaster", required: true },
-    amount: { type: Number, required: true },
-    currency: { 
-        type: String, 
-        enum: ["INR", "USD", "RMB", "EURO"],
-        required: true
+
+    // Peach
+    vendorQueryFinalInv: {
+        dateGiven: { type: Date },  
+        qsName: { type: String }  
     },
-    region: { 
-        type: String, 
-        enum: [
-            "MUMBAI",
-            "KHARGHAR",
-            "AHMEDABAD",
-            "BANGALURU",
-            "BHUBANESHWAR",
-            "CHANDIGARH",
-            "DELHI",
-            "NOIDA",
-            "NAGPUR",
-            "GANSOLI",
-            "HOSPITAL",
-            "DHULE",
-            "SHIRPUR",
-            "INDORE",
-            "HYDERABAD"
-        ],
-        required: true
+
+    // Rose
+    copDetails: {
+        dateGivenToQS: { type: Date },  
+        qsName: { type: String },  
+        copDate: { type: Date },  
+        copAmount: { type: Number },  
+        remarksByQSTeam: { type: String }  
     },
+
+    // Grey
+    migoDetails: {
+        dateGivenForMIGO: { type: Date },  
+        migoNumber: { type: String },  
+        migoDate: { type: Date },  
+        migoAmount: { type: Number },  
+        migoDoneBy: { type: String }  
+    },
+
+    // Dark Blue
+    invReturnedToSiteOffice: {type: Date},
+    
+    // Dark Pink
+    siteEngineerDetails: {
+        dateGivenToSiteEngineer: { type: Date },  
+        siteEngineerName: { type: String }  
+    },
+
+    // Cyan
+    siteInchargeDetails: {
+        dateGivenToSiteIncharge: { type: Date },  
+        siteInchargeName: { type: String }  
+    },
+
+    // White
+    remarks: {type: String},
+
+    // Light Pink
+    siteOfficeDispatchDetails: {
+        dateGivenToSiteOffice: { type: Date },  
+        siteOfficeName: { type: String },  
+        status: { type: String, enum: ["accept", "reject", "hold", "issue"] },  
+        dateGivenToPIMOMumbai: { type: Date }  
+    },
+
+    // Brown
+    pimoMumbaiReceptionDetails: {
+        dateReceivedAtPIMOMumbai: { type: Date },  
+        nameReceivedByPIMOMumbai: { type: String }  
+    },
+
+    // Light Yellow
+    qsMumbaiPimoDetails: {
+        dateGivenToQSMumbai: { type: Date },
+        nameOfQS: { type: String },
+        dateGivenToPIMOMumbai: { type: Date },
+        namePIMO: { type: String }
+    },
+
+    // Lavendar
+    itDeptPimoSesDetails: {
+        dateGivenToITDept: { type: Date },
+        nameGivenToITDept: { type: String },
+        dateGivenToPIMOMumbai: { type: Date },
+        nameGivenToPIMO: { type: String },
+        sesNo: { type: String },
+        sesAmount: { type: Number },
+        sesDate: { type: Date },
+        dateReceivedFromITDept: { type: Date },
+        dateReceivedFromPIMO: { type: Date }
+    },
+
+    // Dark Teal
+    date_given_to_director_trustee_for_approval:{type: Date},
+
+    // Dark Yellow
+    approvalDetails: {
+        dateReceivedBackInPIMO: { type: Date }, 
+        remarksPimoMumbai: { type: String }  
+    },
+
+    // Dark Green
+    accountsDeptSubmission: {
+        dateGivenToAccounts: { type: Date },  
+        nameGivenByPIMO: { type: String }  
+    },
+
+    // Orange
+    date_record_in_accounts_dept:{type: Date},
+
+    // Red
+    date_returned_back_to_pimo: {type: Date},
+
+    // White
+    inv_given_for_booking_and_checking: {type: String},
+
+    // Mint
+    date_returned_back_in_accounts_dept: {type: Date},
+
+    // Light Green
+    paymentInstructions: {
+        instructions: { type: String }, 
+        remarks: { type: String }  
+    },
+
+    // Light Blue
+    accountsPaymentDetails: {
+        f110Identification: { type: String },  
+        paymentDate: { type: Date }, 
+        accountsIdentification: { type: String },  
+        paymentAmount: { type: Number }, 
+        remarks: { type: String }  
+    },
+
+    //White
+    status: {type: String, enum: ["paid", "unpaid"]},
+
     natureOfWork: { 
         type: String, 
         enum: [
@@ -258,9 +362,13 @@ const billSchema = new mongoose.Schema({
             "Others"
         ],
         required: true
-    }
-}, {timestamps: true});
+    },
+},{timestamps:true});
 
 const Bill = mongoose.model('Bill', billSchema);
+
+export const getBillFields = () => {
+    return Object.keys(Bill.schema.paths).filter(field => field !== "__v" && field !== "_id" && field !== "createdAt" && field !== "updatedAt");
+};
 
 export default Bill;

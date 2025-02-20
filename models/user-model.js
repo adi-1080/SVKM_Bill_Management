@@ -4,17 +4,18 @@ const userSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, unique: true, required: true },
     password: { type: String, required: true },
-    role: {
+    contact_no: {
         type: String,
-        enum: [
-            "Stores & Site Central Office Team",
-            "QS Team",
-            "PIMO Mumbai & MIGO/SES Team",
-            "PIMO Mumbai for Advance & FI Entry",
-            "Accounts Team",
-            "Trustee, Adviser & Director",
-        ],
         required: true,
+    },
+    sap_id: {
+        type: String,
+        required: true,
+    },
+    username: {
+        type: String,
+        required: true,
+        unique: true,
     },
     createdAt: { type: Date, default: Date.now },
 },{ timestamps: true });
