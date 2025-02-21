@@ -65,17 +65,62 @@
  *           application/json:
  *             example:
  *               message: "Error message"
+ *
+ * /bill/filter:
+ *   get:
+ *     summary: Filter bills based on various criteria
+ *     parameters:
+ *       - in: query
+ *         name: vendorName
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: vendorNo
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: minAmount
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: maxAmount
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: natureOfWork
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Filtered list of bills
  */
 import billController from "../controllers/bill-controller.js";
 import express from "express";
 
 const router = express.Router();
 
-router.post('/bills', billController.createBill);
-router.get('/bills', billController.getBills);
-router.get('/bills/:id', billController.getBill);
-router.put('/bills/:id', billController.updateBill);
-router.delete('/bills/:id', billController.deleteBill);
+router.post("/bills", billController.createBill);
+router.get("/bills", billController.getBills);
+router.get("/bills/:id", billController.getBill);
+router.put("/bills/:id", billController.updateBill);
+router.delete("/bills/:id", billController.deleteBill);
+router.get("/filter", billController.filterBills);
+router.get("/stats", billController.getBillsStats);
 
 
 export default router;
+
