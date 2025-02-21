@@ -121,4 +121,6 @@ router.delete("/bills/:id", billController.deleteBill);
 router.get("/filter", billController.filterBills);
 router.get("/stats", billController.getBillsStats);
 
+
 export default router;
+
