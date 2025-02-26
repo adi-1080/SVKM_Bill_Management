@@ -195,11 +195,12 @@ const billSchema = new mongoose.Schema({
     qsMumbai: { name: String, dateGiven: Date },
     itDept: { name: String, dateGiven: Date },
     sesDetails: { no: String, amount: Number, date: Date },
-    approvalDetails: { 
-        directorApproval: { dateGiven: Date, dateReceived: Date },
-        remarksPimoMumbai: String
+    approvalDetails: {
+      directorApproval: { dateGiven: Date, dateReceived: Date },
+      remarksPimoMumbai: String,
     },
     accountsDept: {
+
         dateGiven: Date,
         givenBy: String,      // Added to match Excel
         receivedBy: String,
@@ -227,64 +228,67 @@ const billSchema = new mongoose.Schema({
         }
     },
     amount: { type: Number, required: true },
-    currency: { 
-        type: String, 
-        enum: ["INR", "USD", "RMB", "EURO"],
-        required: true
+    currency: {
+      type: String,
+      enum: ["INR", "USD", "RMB", "EURO"],
+      required: true,
     },
-    region: { 
-        type: String, 
-        enum: [
-            "MUMBAI",
-            "KHARGHAR",
-            "AHMEDABAD",
-            "BANGALURU",
-            "BHUBANESHWAR",
-            "CHANDIGARH",
-            "DELHI",
-            "NOIDA",
-            "NAGPUR",
-            "GANSOLI",
-            "HOSPITAL",
-            "DHULE",
-            "SHIRPUR",
-            "INDORE",
-            "HYDERABAD"
-        ],
-        required: true
+    region: {
+      type: String,
+      enum: [
+        "MUMBAI",
+        "KHARGHAR",
+        "AHMEDABAD",
+        "BANGALURU",
+        "BHUBANESHWAR",
+        "CHANDIGARH",
+        "DELHI",
+        "NOIDA",
+        "NAGPUR",
+        "GANSOLI",
+        "HOSPITAL",
+        "DHULE",
+        "SHIRPUR",
+        "INDORE",
+        "HYDERABAD",
+      ],
+      required: true,
     },
-    natureOfWork: { 
-        type: String, 
-        enum: [
-            "Proforma Invoice",
-            "Credit note",
-            "Hold/Ret Release",
-            "Direct FI Entry",
-            "Advance/LC/BG",
-            "Petty cash",
-            "Imports",
-            "Materials",
-            "Equipments",
-            "IT related",
-            "IBMS",
-            "Consultancy bill",
-            "Civil Works",
-            "STP Work",
-            "MEP Work",
-            "HVAC Work",
-            "Fire Fighting Work",
-            "Petrol/Diesel",
-            "Painting work",
-            "Utility Work",
-            "Site Infra",
-            "Carpentry",
-            "Housekeeping/Security",
-            "Overheads",
-            "Others"
-        ],
-        required: true
-    }
-}, {timestamps: true});
+    natureOfWork: {
+      type: String,
+      enum: [
+        "Proforma Invoice",
+        "Credit note",
+        "Hold/Ret Release",
+        "Direct FI Entry",
+        "Advance/LC/BG",
+        "Petty cash",
+        "Imports",
+        "Materials",
+        "Equipments",
+        "IT related",
+        "IBMS",
+        "Consultancy bill",
+        "Civil Works",
+        "STP Work",
+        "MEP Work",
+        "HVAC Work",
+        "Fire Fighting Work",
+        "Petrol/Diesel",
+        "Painting work",
+        "Utility Work",
+        "Site Infra",
+        "Carpentry",
+        "Housekeeping/Security",
+        "Overheads",
+        "Others",
+      ],
+      required: true,
+    },
+  },
+  { timestamps: true }
+);
+
 
 // Add a method to set import mode
 billSchema.methods.setImportMode = function(isImport) {
