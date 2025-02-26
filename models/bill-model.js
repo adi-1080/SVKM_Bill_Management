@@ -168,7 +168,13 @@ const billSchema = new mongoose.Schema({
     qsCOP: { name: String, dateGiven: Date },
     copDetails: { date: Date, amount: Number },
     remarksByQSTeam: { type: String },
-    migoDetails: { date: Date, no: String, amount: Number, doneBy: String },
+    migoDetails: { 
+        date: Date, 
+        no: String, 
+        amount: Number, 
+        doneBy: String,
+        dateGiven: Date  // Added to match Excel
+    },
     invReturnedToSite: { type: Date },
     siteEngineer: { name: String, dateGiven: Date },
     architect: { name: String, dateGiven: Date },
@@ -176,7 +182,16 @@ const billSchema = new mongoose.Schema({
     remarks: { type: String },
     siteOfficeDispatch: { name: String, dateGiven: Date },
     status: { type: String, enum: ["accept", "reject", "hold", "issue"] },
-    pimoMumbai: { dateGiven: Date, dateReceived: Date, receivedBy: String },
+    pimoMumbai: { 
+        dateGiven: Date,
+        dateReceived: Date,
+        receivedBy: String,
+        dateGivenPIMO: Date,  // Added to match Excel
+        namePIMO: String,     // Added to match Excel
+        dateGivenPIMO2: Date, // Added to match Excel
+        namePIMO2: String,    // Added to match Excel
+        dateReceivedFromPIMO: Date // Added to match Excel
+    },
     qsMumbai: { name: String, dateGiven: Date },
     itDept: { name: String, dateGiven: Date },
     sesDetails: { no: String, amount: Number, date: Date },
@@ -186,21 +201,31 @@ const billSchema = new mongoose.Schema({
     },
     accountsDept: {
         dateGiven: Date,
+        givenBy: String,      // Added to match Excel
         receivedBy: String,
         dateReceived: Date,
         returnedToPimo: Date,
         receivedBack: Date,
+        invBookingChecking: String,  // Added to match Excel
         paymentInstructions: String,
         remarksForPayInstructions: String,
         f110Identification: String,
         paymentDate: Date,
+        hardCopy: String,     // Added to match Excel
         accountsIdentification: String,
         paymentAmt: Number,
         remarksAcctsDept: String,
         status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
     },
     billDate: { type: Date, required: true },
-    vendor: { type: mongoose.Schema.Types.ObjectId, ref: "VendorMaster", required: true },
+    vendor: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: "VendorMaster", 
+        required: function() {
+            // Only require vendor if not in import mode
+            return !this._importMode;
+        }
+    },
     amount: { type: Number, required: true },
     currency: { 
         type: String, 
@@ -260,6 +285,11 @@ const billSchema = new mongoose.Schema({
         required: true
     }
 }, {timestamps: true});
+
+// Add a method to set import mode
+billSchema.methods.setImportMode = function(isImport) {
+    this._importMode = isImport;
+};
 
 const Bill = mongoose.model('Bill', billSchema);
 

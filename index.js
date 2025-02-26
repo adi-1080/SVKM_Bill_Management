@@ -8,27 +8,48 @@ import swaggerSpec from "./utils/swagger.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
+
+// Connect to database
 connectDB();
 
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(
-  cors({
-    credentials: true,
-    origin: process.env.CLIENT_URL,
-    methods: ["GET", "POST", "PUT", "DELETE"]
-  })
-);
+app.use(cors({
+  credentials: true,
+  origin: process.env.CLIENT_URL,
+  methods: ["GET", "POST", "PUT", "DELETE"]
+}));
 
+// Routes
 import billRoute from "./routes/bill-route.js";
 import reportRoute from "./routes/report-route.js";
-app.use('/bill', billRoute);
-app.use('/report',reportRoute);
 
-// Swagger docs route
+app.use('/bill', billRoute);
+app.use('/report', reportRoute);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.listen(port, () => {
-  console.log(`server is listening on port ${port}`);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      success: false,
+      message: `File upload error: ${err.message}`
+    });
+  }
+  
+  res.status(500).json({
+    success: false,
+    message: err.message || "Internal server error",
+    error: process.env.NODE_ENV === 'production' ? undefined : err.stack
+  });
 });
+
+app.listen(port, () => {
+  console.log(`Server is listening on port ${port}`);
+});
+
+export default app;
