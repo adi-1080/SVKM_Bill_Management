@@ -37,6 +37,9 @@ const router = express.Router();
  *       500:
  *         description: Internal server error.
  */
-router.post("/", reportController.generateReport);
+router.post("/generate-report", reportController.generateReport);
+
+// Import bills from file route
+router.post("/import-report", reportController.importBills);
 
 export default router;
