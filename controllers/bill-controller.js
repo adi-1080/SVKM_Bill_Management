@@ -1,20 +1,20 @@
 
 import Bill from '../models/bill-model.js'; 
 import UserRole from '../models/user-roles-model.js';
-import {getBillFields} from '../models/bill-model.js';
 import {
     buildAmountRangeQuery,
     buildDateRangeQuery,
   } from "../utils/bill-helper.js";
 
-const getBillSchemaFields = async (req, res) => {
-    try {
-        const fields = getBillFields();
-        res.status(200).json(fields);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+// kuch aur try kar raha tha lekin jaane do ignore kardo
+// const getBillSchemaFields = async (req, res) => {
+//     try {
+//         const fields = getBillFields();
+//         res.status(200).json(fields);
+//     } catch (error) {
+//         res.status(500).json({ message: error.message });
+//     }
+// };
 
 const checkPermissions = async (userId, action, field) => {
     const userRole = await UserRole.findOne({user: userId}).populate('role');
@@ -63,7 +63,7 @@ const updateBill = async (req, res) => {
     const id = req.params.id; // this is the bill _id
     const updates = req.body;
 
-    console.log("userId",userId);
+    console.log("updates",updates);
     // if(!await checkPermissions(userId,'edit')){
     //     return res.status(403).json({message: 'You cannot edit these fields'})
     // }
@@ -232,7 +232,7 @@ export default {
   deleteBill,
   filterBills,
   getBillsStats,
-  getBillSchemaFields,
+//   getBillSchemaFields,
 };
 
 //helper functions ignore for now
