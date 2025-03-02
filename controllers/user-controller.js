@@ -1,5 +1,88 @@
 import User from "../models/user-model.js";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// to generate JWT token
+const generateToken = (userId) => {
+    return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '10h' });
+};
+
+export const registerUser = async (req, res) => {
+    const { name, email, password, contact_no, sap_id, username } = req.body;
+
+    try {
+        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+        if (existingUser) {
+            return res.status(400).json({ message: "Email or username already exists" });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newUser = new User({
+            name,
+            email,
+            password: hashedPassword,
+            contact_no,
+            sap_id,
+            username,
+        });
+
+        await newUser.save();
+
+        const token = generateToken(newUser._id);
+
+        res.status(201).json({
+            message: "User registered successfully",
+            user: {
+                _id: newUser._id,
+                name: newUser.name,
+                email: newUser.email,
+                username: newUser.username,
+            },
+            token,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Error registering user", error: error.message });
+    }
+};
+
+export const loginUser = async (req, res) => {
+    const { emailOrUsername, password } = req.body;
+
+    try {
+        const user = await User.findOne({
+            $or: [{ email: emailOrUsername }, { username: emailOrUsername }],
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: "Invalid email/username or password" });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(400).json({ message: "Invalid email/username or password" });
+        }
+
+        const token = generateToken(user._id);
+
+        res.status(200).json({
+            message: "Login successful",
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                username: user.username,
+            },
+            token,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Error logging in", error: error.message });
+    }
+};
 
 export const getUsers = async (req, res) => {
     try {

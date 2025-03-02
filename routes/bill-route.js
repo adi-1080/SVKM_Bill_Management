@@ -71,10 +71,12 @@ import express from "express";
 
 const router = express.Router();
 
+import authMiddleware from "../middleware/auth-middleware.js";
+
 router.post('/bills', billController.createBill);
 router.get('/bills', billController.getBills);
 router.get('/bills/:id', billController.getBill);
-router.put('/bills/:id', billController.updateBill);
+router.put('/bills/:id',authMiddleware, billController.updateBill);
 router.delete('/bills/:id', billController.deleteBill);
 
 export default router;

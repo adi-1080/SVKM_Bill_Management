@@ -1,4 +1,5 @@
 import Bill from '../models/bill-model.js'; 
+import UserRole from '../models/user-roles-model.js';
 import {getBillFields} from '../models/bill-model.js';
 
 const getBillSchemaFields = async (req, res) => {
@@ -10,6 +11,16 @@ const getBillSchemaFields = async (req, res) => {
     }
 };
 
+const checkPermissions = async (userId, action, field) => {
+    const userRole = await UserRole.findOne({user: userId}).populate('role');
+
+    if(!userRole) return false;
+
+    for(const role of userRole.role){
+        if(role.permissions[action] && role.permissions[action][field]) return true;
+    }
+    return false;
+}
 const createBill = async (req, res) => {
     try {
         const bill = new Bill(req.body);
@@ -42,8 +53,22 @@ const getBill = async (req, res) => {
 };
 
 const updateBill = async (req, res) => {
+    const userId = req.userId;
+    const id = req.params.id; // this is the bill _id
+    const updates = req.body;
+
+    console.log("userId",userId);
+    // if(!await checkPermissions(userId,'edit')){
+    //     return res.status(403).json({message: 'You cannot edit these fields'})
+    // }
+    for (const field in updates){
+        if(!await checkPermissions(userId,'edit',field)){
+            return res.status(403).json({message: "You cannot edit these fields"})
+        }
+    }
     try {
-        const bill = await Bill.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        const bill = await Bill.findByIdAndUpdate(id, req.body, { new: true });
+        console.log("bill ",bill);
         if (!bill) {
             return res.status(404).json({ message: 'Bill not found' });
         }

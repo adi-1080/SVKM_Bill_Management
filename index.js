@@ -26,12 +26,14 @@ import userRoute from "./routes/user-route.js";
 import vendorRoute from "./routes/vendor-route.js";
 import billWorkflowRoute from "./routes/bill-workflow-route.js";
 import roleRoute from "./routes/role-route.js";
+import userRoleRoute from "./routes/user-roles-route.js";
 
 app.use('/bill', billRoute);
 app.use('/users', userRoute);
 app.use('/vendors', vendorRoute);
 app.use('/bwf', billWorkflowRoute);
 app.use('/role', roleRoute);
+app.use('/user-roles', userRoleRoute);
 
 // Swagger docs route
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
