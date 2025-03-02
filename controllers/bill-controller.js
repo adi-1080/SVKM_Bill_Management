@@ -1,8 +1,21 @@
-import Bill from "../models/bill-model.js";
+
+import Bill from '../models/bill-model.js'; 
+import {getBillFields} from '../models/bill-model.js';
+
+const getBillSchemaFields = async (req, res) => {
+    try {
+        const fields = getBillFields();
+        res.status(200).json(fields);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 import {
   buildAmountRangeQuery,
   buildDateRangeQuery,
 } from "../utils/bill-helper.js";
+
 
 const createBill = async (req, res) => {
   try {
@@ -189,6 +202,7 @@ const getBillsStats = async (req, res) => {
 };
 
 export default {
+
   createBill,
   getBill,
   getBills,
@@ -196,6 +210,7 @@ export default {
   deleteBill,
   filterBills,
   getBillsStats,
+  getBillSchemaFields,
 };
 
 //helper functions ignore for now
@@ -212,3 +227,4 @@ export default {
 //     if (maxAmount) amountQuery.$lte = Number(maxAmount);
 //     return amountQuery;
 // };
+
