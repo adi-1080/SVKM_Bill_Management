@@ -1,21 +1,31 @@
 
 import Bill from '../models/bill-model.js'; 
-import {getBillFields} from '../models/bill-model.js';
-
-const getBillSchemaFields = async (req, res) => {
-    try {
-        const fields = getBillFields();
-        res.status(200).json(fields);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
+import UserRole from '../models/user-roles-model.js';
 import {
-  buildAmountRangeQuery,
-  buildDateRangeQuery,
-} from "../utils/bill-helper.js";
+    buildAmountRangeQuery,
+    buildDateRangeQuery,
+  } from "../utils/bill-helper.js";
 
+// kuch aur try kar raha tha lekin jaane do ignore kardo
+// const getBillSchemaFields = async (req, res) => {
+//     try {
+//         const fields = getBillFields();
+//         res.status(200).json(fields);
+//     } catch (error) {
+//         res.status(500).json({ message: error.message });
+//     }
+// };
+
+const checkPermissions = async (userId, action, field) => {
+    const userRole = await UserRole.findOne({user: userId}).populate('role');
+
+    if(!userRole) return false;
+
+    for(const role of userRole.role){
+        if(role.permissions[action] && role.permissions[action][field]) return true;
+    }
+    return false;
+}
 
 const createBill = async (req, res) => {
   try {
@@ -49,15 +59,27 @@ const getBill = async (req, res) => {
 };
 
 const updateBill = async (req, res) => {
-  try {
-    const bill = await Bill.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    if (!bill) {
-      return res.status(404).json({ message: "Bill not found" });
+    const userId = req.userId;
+    const id = req.params.id; // this is the bill _id
+    const updates = req.body;
+
+    console.log("updates",updates);
+    // if(!await checkPermissions(userId,'edit')){
+    //     return res.status(403).json({message: 'You cannot edit these fields'})
+    // }
+    for (const field in updates){
+        if(!await checkPermissions(userId,'edit',field)){
+            return res.status(403).json({message: "You cannot edit these fields"})
+        }
     }
-    res.status(200).json(bill);
-  } catch (error) {
+    try {
+        const bill = await Bill.findByIdAndUpdate(id, req.body, { new: true });
+        console.log("bill ",bill);
+        if (!bill) {
+            return res.status(404).json({ message: 'Bill not found' });
+        }
+        res.status(200).json(bill);
+    } catch (error) {
     res.status(400).json({ message: error.message });
   }
 };
@@ -210,7 +232,7 @@ export default {
   deleteBill,
   filterBills,
   getBillsStats,
-  getBillSchemaFields,
+//   getBillSchemaFields,
 };
 
 //helper functions ignore for now

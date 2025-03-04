@@ -29,6 +29,7 @@ import vendorRoute from "./routes/vendor-route.js";
 import billWorkflowRoute from "./routes/bill-workflow-route.js";
 
 import roleRoute from "./routes/role-route.js";
+import userRoleRoute from "./routes/user-roles-route.js";
 
 import reportRoute from "./routes/report-route.js";
 
@@ -39,6 +40,7 @@ app.use('/vendors', vendorRoute);
 app.use('/bwf', billWorkflowRoute);
 
 app.use('/role', roleRoute);
+app.use('/user-roles', userRoleRoute);
 
 app.use('/report',reportRoute);
 
