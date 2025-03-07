@@ -37,6 +37,7 @@ const fields = [
     "department",
     "remarksBySiteTeam",
     "attachment",
+    "attachmentType",
     "advanceDate",
     "advanceAmt",
     "advancePercentage",
@@ -154,8 +155,8 @@ const parseDate = (dateString) => {
 // Helper: convert amount strings to numbers
 const parseAmount = (value) => {
   if (!value) return 0;
-  // Remove commas and currency symbols
-  const cleaned = value.toString().replace(/[₹,]/g, '').trim();
+  // Remove currency symbols, commas and spaces
+  const cleaned = value.toString().replace(/[₹,$€¥\s,]/g, '').trim();
   return parseFloat(cleaned) || 0;
 };
 
@@ -272,6 +273,11 @@ export const importBillsFromCSV = async (filePath) => {
         if (index < cells.length) {
           const fieldName = headerMapping[header] || header;
           rowData[fieldName] = cells[index];
+          
+          // Special handling for region to preserve case information for validation
+          if (fieldName === 'region' && cells[index]) {
+            rowData.regionOriginal = cells[index].trim();
+          }
         }
       });
       
@@ -330,6 +336,7 @@ const headerMapping = {
   "Department": "department",
   "Remarks by Site Team": "remarksBySiteTeam",
   "Attachment": "attachment",
+  "Attachment Type": "attachmentType",
   "Advance Dt": "advanceDate",
   "Advance Amt": "advanceAmt",
   "Advance Percentage ": "advancePercentage", // Note the space
@@ -377,7 +384,7 @@ const headerMapping = {
   "SES Amt": "sesDetails.amount",
   "SES Dt": "sesDetails.date",
   "SES done by": "sesDetails.doneBy",
-  "Dt recd from IT Deptt": "pimoMumbai.dateReceivedFromIT",
+  "Dt recd from IT Deptt": "itDept.dateReceived",
   "Dt recd from PIMO": "pimoMumbai.dateReceivedFromPIMO",
   "Dt given to Director/Advisor/Trustee for approval": "approvalDetails.directorApproval.dateGiven",
   "Dt recd back in PIMO after approval": "approvalDetails.directorApproval.dateReceived",
@@ -425,15 +432,15 @@ const validateRequiredFields = (data) => {
     vendorNo: "DEFAULT001",
     vendorName: "Default Vendor",
     gstNumber: "NOTPROVIDED",
-    compliance206AB: "No",
-    panStatus: "Not Verified",
+    compliance206AB: "206AB check on website",
+    panStatus: "PAN operative/N.A.",
     poCreated: "No",
     billDate: new Date().toISOString().split('T')[0],
     amount: 0,
     currency: "INR",
     region: "MUMBAI",
     natureOfWork: "Others",
-    // Add a default ObjectId for vendor
+    attachmentType: "Others",
     vendor: new mongoose.Types.ObjectId()
   };
 
@@ -457,16 +464,6 @@ const validateRequiredFields = (data) => {
     data.currency = 'INR';
   }
 
-  // Validate region is valid
-  const validRegions = [
-    "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR",
-    "CHANDIGARH", "DELHI", "NOIDA", "NAGPUR", "GANSOLI", "HOSPITAL",
-    "DHULE", "SHIRPUR", "INDORE", "HYDERABAD"
-  ];
-  if (!validRegions.includes(data.region)) {
-    data.region = "MUMBAI";
-  }
-
   // Ensure proper enum values for status
   if (data.status && !['accept', 'reject', 'hold', 'issue'].includes(data.status.toLowerCase())) {
     data.status = 'hold';
@@ -481,6 +478,74 @@ const validateRequiredFields = (data) => {
   // Convert Yes/No fields
   if (data.poCreated) {
     data.poCreated = data.poCreated.toLowerCase().includes('yes') ? 'Yes' : 'No';
+  }
+
+  // Fix amount mapping from taxInvAmt
+  data.amount = parseAmount(data.taxInvAmt) || 0;
+
+  // Fix date handling
+  if (data.poDate) {
+    data.poDate = parseDate(data.poDate);
+  }
+  if (data.taxInvDate) {
+    data.taxInvDate = parseDate(data.taxInvDate);
+  }
+
+  // ADD THIS NEW SINGLE REGION VALIDATION LOGIC
+  // This should be the only region validation block in the function
+  if (data.region) {
+    console.log(`Region before mapping: "${data.region}"`);
+    
+    const validRegions = [
+      "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR",
+      "CHANDIGARH", "DELHI", "NOIDA", "NAGPUR", "GANSOLI", "HOSPITAL",
+      "DHULE", "SHIRPUR", "INDORE", "HYDERABAD"
+    ];
+    
+    // Special case direct mappings
+    const directMappings = {
+      "shirpur": "SHIRPUR",
+      "ahmedabad": "AHMEDABAD",
+      "mumbai": "MUMBAI",
+      "chandigarh": "CHANDIGARH",
+      "delhi": "DELHI",
+      "noida": "NOIDA",
+      "nagpur": "NAGPUR",
+      "indore": "INDORE",
+      "hyderabad": "HYDERABAD",
+      "dhule": "DHULE",
+      "kharghar": "KHARGHAR"
+    };
+    
+    // Try direct mapping first (case insensitive)
+    const normalizedInput = data.region.trim().toLowerCase();
+    if (directMappings[normalizedInput]) {
+      data.region = directMappings[normalizedInput];
+      console.log(`Direct region mapping: "${normalizedInput}" → "${data.region}"`);
+    } else {
+      // Try exact case-insensitive match with validRegions
+      const exactMatch = validRegions.find(r => r.toLowerCase() === normalizedInput);
+      if (exactMatch) {
+        data.region = exactMatch;
+        console.log(`Exact region match: "${normalizedInput}" → "${data.region}"`);
+      } else {
+        // Try partial matches as fallback
+        const partialMatches = validRegions.filter(r => 
+          r.toLowerCase().includes(normalizedInput) || 
+          normalizedInput.includes(r.toLowerCase())
+        );
+        
+        if (partialMatches.length > 0) {
+          data.region = partialMatches[0];
+          console.log(`Partial region match: "${normalizedInput}" → "${data.region}"`);
+        } else {
+          console.log(`No region match for "${normalizedInput}", defaulting to MUMBAI`);
+          data.region = "MUMBAI"; // Default if no match
+        }
+      }
+    }
+    
+    console.log(`Final region value: "${data.region}"`);
   }
 
   return data;
@@ -544,6 +609,11 @@ export const importBillsFromExcel = async (filePath) => {
         }
         
         rowData[fieldName] = value;
+        
+        // Special handling for region to preserve original value
+        if (fieldName === 'region' && value) {
+          console.log(`Found raw region in Excel row ${rowNumber}: "${value}"`);
+        }
       });
       
       if (!isEmpty) {
