@@ -129,8 +129,8 @@
 
 import mongoose from "mongoose";
 
-//redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema({
+
     srNo: { type: Number, auto: true },
     srNoOld: { type: Number, auto: true },
     typeOfInv: { 
@@ -145,11 +145,25 @@ const billSchema = new mongoose.Schema({
             "Proforma Invoice",
             "Hold/Ret Release"
         ]
+
     },
+      region: {
+        type: String,
+        enum: [
+            "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR", "CHANDIGARH", "DELHI", "NOIDA",
+            "NAGPUR", "GANSOLI", "HOSPITAL", "DHULE", "SHIRPUR", "INDORE", "HYDERABAD"
+        ],
+        required: true
+      },
     projectDescription: { type: String, required: true },
-    vendorNo: { type: String, required: true },
+    vendor: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "VendorMaster",
+        required: function () { return !this._importMode; }
+    },
     vendorName: { type: String, required: true },
     gstNumber: { type: String, required: true },
+
     compliance206AB: { 
         type: String, 
         required: true,
@@ -170,19 +184,26 @@ const billSchema = new mongoose.Schema({
         ]
     },
     poCreated: { type: String, enum: ["Yes", "No"], required: true },
+
     poNo: { type: String },
     poDate: { type: Date },
     poAmt: { type: Number },
+
+    // Proforma Invoice Details
     proformaInvNo: { type: String },
     proformaInvDate: { type: Date },
     proformaInvAmt: { type: Number },
     proformaInvRecdAtSite: { type: Date },
     proformaInvRecdBy: { type: String },
+
+    // Tax Invoice Details
     taxInvNo: { type: String },
     taxInvDate: { type: Date },
+    currency: { type: String, required: true, enum: ["INR", "USD", "RMB", "EURO"] },
     taxInvAmt: { type: Number },
     taxInvRecdAtSite: { type: Date },
     taxInvRecdBy: { type: String },
+
     department: { type: String },
     remarksBySiteTeam: { type: String },
     attachment: { type: String },
@@ -197,41 +218,44 @@ const billSchema = new mongoose.Schema({
             "Others"
         ]
     },
+
     advanceDate: { type: Date },
     advanceAmt: { type: Number },
     advancePercentage: { type: Number },
     advRequestEnteredBy: { type: String },
+
+    // Various Department Processing Details
     qualityEngineer: { name: String, dateGiven: Date },
     qsInspection: { name: String, dateGiven: Date },
     qsMeasurementCheck: { name: String, dateGiven: Date },
     vendorFinalInv: { dateGiven: Date },
     qsCOP: { name: String, dateGiven: Date },
-    copDetails: { date: Date, amount: Number },
-    remarksByQSTeam: { type: String },
-    migoDetails: { 
-        date: Date, 
-        no: String, 
-        amount: Number, 
-        doneBy: String,
-        dateGiven: Date  // Added to match Excel
-    },
+    copDetails: { date: Date, amount: Number, remarksByQSTeam: String },
+    migoDetails: { date: Date, no: String, amount: Number, doneBy: String, dateGiven: Date },
     invReturnedToSite: { type: Date },
     siteEngineer: { name: String, dateGiven: Date },
-    architect: { name: String, dateGiven: Date },
     siteIncharge: { name: String, dateGiven: Date },
     remarks: { type: String },
+
+    // Dispatch & Approval
     siteOfficeDispatch: { name: String, dateGiven: Date },
     status: { type: String, enum: ["accept", "reject", "hold", "issue"] },
-    pimoMumbai: { 
+    pimoMumbai: {
         dateGiven: Date,
         dateReceived: Date,
         receivedBy: String,
+
         dateGivenPIMO: Date,  // Added to match Excel
         namePIMO: String,     // Added to match Excel
         dateGivenPIMO2: Date, // Added to match Excel
         namePIMO2: String,    // Added to match Excel
         dateReceivedFromIT: Date,  // For "Dt recd from IT Deptt"
         dateReceivedFromPIMO: Date // For "Dt recd from PIMO"
+
+        dateGivenPIMO: Date,
+        namePIMO: String,
+        dateReceivedFromPIMO: Date
+
     },
     qsMumbai: { name: String, dateGiven: Date },
     itDept: { 
@@ -246,65 +270,33 @@ const billSchema = new mongoose.Schema({
         doneBy: String  // Added for "SES done by"
     },
     approvalDetails: {
-      directorApproval: { dateGiven: Date, dateReceived: Date },
-      remarksPimoMumbai: String,
+        directorApproval: { dateGiven: Date, dateReceived: Date },
+        remarksPimoMumbai: String
     },
     accountsDept: {
-
         dateGiven: Date,
-        givenBy: String,      // Added to match Excel
+        givenBy: String,
         receivedBy: String,
         dateReceived: Date,
         returnedToPimo: Date,
         receivedBack: Date,
-        invBookingChecking: String,  // Added to match Excel
+        invBookingChecking: String,
         paymentInstructions: String,
         remarksForPayInstructions: String,
         f110Identification: String,
         paymentDate: Date,
-        hardCopy: String,     // Added to match Excel
+        hardCopy: String,
         accountsIdentification: String,
         paymentAmt: Number,
         remarksAcctsDept: String,
         status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
     },
+
+    // Additional Info
     billDate: { type: Date, required: true },
-    vendor: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: "VendorMaster", 
-        required: function() {
-            // Only require vendor if not in import mode
-            return !this._importMode;
-        }
-    },
     amount: { type: Number, required: true },
-    currency: {
-      type: String,
-      enum: ["INR", "USD", "RMB", "EURO"],
-      required: true,
-    },
-    region: {
-      type: String,
-      enum: [
-        "MUMBAI",
-        "KHARGHAR",
-        "AHMEDABAD",
-        "BANGALURU",
-        "BHUBANESHWAR",
-        "CHANDIGARH",
-        "DELHI",
-        "NOIDA",
-        "NAGPUR",
-        "GANSOLI",
-        "HOSPITAL",
-        "DHULE",
-        "SHIRPUR",
-        "INDORE",
-        "HYDERABAD",
-      ],
-      required: true,
-    },
     natureOfWork: {
+
       type: String,
       enum: [
         "Proforma Invoice",
@@ -351,10 +343,10 @@ billSchema.pre('save', function(next) {
 });
 
 // Add a method to set import mode
-billSchema.methods.setImportMode = function(isImport) {
+billSchema.methods.setImportMode = function (isImport) {
     this._importMode = isImport;
 };
 
 const Bill = mongoose.model('Bill', billSchema);
-
 export default Bill;
+

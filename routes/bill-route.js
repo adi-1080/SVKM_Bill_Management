@@ -113,14 +113,15 @@ import express from "express";
 
 const router = express.Router();
 
-router.post("/bills", billController.createBill);
-router.get("/bills", billController.getBills);
-router.get("/bills/:id", billController.getBill);
-router.put("/bills/:id", billController.updateBill);
-router.delete("/bills/:id", billController.deleteBill);
+import authMiddleware from "../middleware/auth-middleware.js";
+
+router.post('/bills', billController.createBill);
+router.get('/bills', billController.getBills);
+router.get('/bills/:id', billController.getBill);
+router.put('/bills/:id',authMiddleware, billController.updateBill);
+router.delete('/bills/:id', billController.deleteBill);
 router.get("/filter", billController.filterBills);
 router.get("/stats", billController.getBillsStats);
 
 
 export default router;
-
