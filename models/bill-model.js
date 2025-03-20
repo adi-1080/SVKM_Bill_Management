@@ -130,20 +130,31 @@
 import mongoose from "mongoose";
 
 const billSchema = new mongoose.Schema({
-    // White
-    srNo: { type: String, auto: true },
-    srNoOld: { type: String, auto: true },
 
-    // General & Vendor Details (Yellow)
-    typeOfInv: { type: String, required: true },
-    region: {
+    srNo: { type: Number, auto: true },
+    srNoOld: { type: Number, auto: true },
+    typeOfInv: { 
+        type: String, 
+        required: true,
+        enum: [
+            "Materials",
+            "Credit note",
+            "Advance/LC/BG",
+            "Others",
+            "Utility Work",
+            "Proforma Invoice",
+            "Hold/Ret Release"
+        ]
+
+    },
+      region: {
         type: String,
         enum: [
             "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR", "CHANDIGARH", "DELHI", "NOIDA",
             "NAGPUR", "GANSOLI", "HOSPITAL", "DHULE", "SHIRPUR", "INDORE", "HYDERABAD"
         ],
         required: true
-    },
+      },
     projectDescription: { type: String, required: true },
     vendor: {
         type: mongoose.Schema.Types.ObjectId,
@@ -152,11 +163,28 @@ const billSchema = new mongoose.Schema({
     },
     vendorName: { type: String, required: true },
     gstNumber: { type: String, required: true },
-    compliance206AB: { type: String, required: true },
-    panStatus: { type: String, required: true },
 
-    // PO Details
-    poCreated: { type: String, required: true, enum: ["Yes", "No"] },
+    compliance206AB: { 
+        type: String, 
+        required: true,
+        enum: [
+            "206AB check on website",
+            "2024-Specified Person U/S 206AB",
+            "2024-Non-Specified person U/S 206AB", 
+            "2025-Specified Person U/S 206AB",
+            "2025-Non-Specified person U/S 206AB"
+        ]
+    },
+    panStatus: { 
+        type: String, 
+        required: true,
+        enum: [
+            "PAN operative/N.A.",
+            "PAN inoperative"
+        ]
+    },
+    poCreated: { type: String, enum: ["Yes", "No"], required: true },
+
     poNo: { type: String },
     poDate: { type: Date },
     poAmt: { type: Number },
@@ -176,7 +204,21 @@ const billSchema = new mongoose.Schema({
     taxInvRecdAtSite: { type: Date },
     taxInvRecdBy: { type: String },
 
-    // Financial Details
+    department: { type: String },
+    remarksBySiteTeam: { type: String },
+    attachment: { type: String },
+    attachmentType: { 
+        type: String,
+        enum: [
+            "Invoice/Release",
+            "Credit note/Debit Note",
+            "Advance/LC/BG",
+            "COP",
+            "Proforma Invoice",
+            "Others"
+        ]
+    },
+
     advanceDate: { type: Date },
     advanceAmt: { type: Number },
     advancePercentage: { type: Number },
@@ -202,13 +244,31 @@ const billSchema = new mongoose.Schema({
         dateGiven: Date,
         dateReceived: Date,
         receivedBy: String,
+
+        dateGivenPIMO: Date,  // Added to match Excel
+        namePIMO: String,     // Added to match Excel
+        dateGivenPIMO2: Date, // Added to match Excel
+        namePIMO2: String,    // Added to match Excel
+        dateReceivedFromIT: Date,  // For "Dt recd from IT Deptt"
+        dateReceivedFromPIMO: Date // For "Dt recd from PIMO"
+
         dateGivenPIMO: Date,
         namePIMO: String,
         dateReceivedFromPIMO: Date
+
     },
     qsMumbai: { name: String, dateGiven: Date },
-    itDept: { name: String, dateGiven: Date },
-    sesDetails: { no: String, amount: Number, date: Date },
+    itDept: { 
+        name: String, 
+        dateGiven: Date,
+        dateReceived: Date  // Added for "Dt recd from IT Deptt"
+    },
+    sesDetails: { 
+        no: String, 
+        amount: Number, 
+        date: Date,
+        doneBy: String  // Added for "SES done by"
+    },
     approvalDetails: {
         directorApproval: { dateGiven: Date, dateReceived: Date },
         remarksPimoMumbai: String
@@ -236,17 +296,51 @@ const billSchema = new mongoose.Schema({
     billDate: { type: Date, required: true },
     amount: { type: Number, required: true },
     natureOfWork: {
-        type: String,
-        enum: [
-            "Proforma Invoice", "Credit note", "Hold/Ret Release", "Direct FI Entry", "Advance/LC/BG",
-            "Petty cash", "Imports", "Materials", "Equipments", "IT related", "IBMS", "Consultancy bill",
-            "Civil Works", "STP Work", "MEP Work", "HVAC Work", "Fire Fighting Work", "Petrol/Diesel",
-            "Painting work", "Utility Work", "Site Infra", "Carpentry", "Housekeeping/Security",
-            "Overheads", "Others"
-        ],
-        required: true
-    }
-}, { timestamps: true });
+
+      type: String,
+      enum: [
+        "Proforma Invoice",
+        "Credit note",
+        "Hold/Ret Release",
+        "Direct FI Entry",
+        "Advance/LC/BG",
+        "Petty cash",
+        "Imports",
+        "Materials",
+        "Equipments",
+        "IT related",
+        "IBMS",
+        "Consultancy bill",
+        "Civil Works",
+        "STP Work",
+        "MEP Work",
+        "HVAC Work",
+        "Fire Fighting Work",
+        "Petrol/Diesel",
+        "Painting work",
+        "Utility Work",
+        "Site Infra",
+        "Carpentry",
+        "Housekeeping/Security",
+        "Overheads",
+        "Others",
+      ],
+      required: true,
+    },
+  },
+  { timestamps: true }
+);
+
+// Improve the pre-save hook to normalize region
+billSchema.pre('save', function(next) {
+  // Ensure region is always uppercase for consistency
+  if (this.region) {
+    const originalRegion = this.region;
+    this.region = this.region.toUpperCase();
+    console.log(`[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`);
+  }
+  next();
+});
 
 // Add a method to set import mode
 billSchema.methods.setImportMode = function (isImport) {

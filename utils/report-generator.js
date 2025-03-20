@@ -57,6 +57,7 @@ export const generateExcelReport = async (billIds) => {
     { field: "department", header: "Department" },
     { field: "remarksBySiteTeam", header: "Remarks by Site Team" },
     { field: "attachment", header: "Attachment" },
+    { field: "attachmentType", header: "Attachment Type" },
     { field: "advanceDate", header: "Advance Dt" },
     { field: "advanceAmt", header: "Advance Amt" },
     { field: "advancePercentage", header: "Advance Percentage" },
@@ -291,6 +292,11 @@ export const generatePDFReport = async (billIds) => {
       ['QS Inspection', bill.qsInspection?.name],
       ['Final Approval', bill.approvalDetails?.directorApproval?.status],
       ['Payment Status', bill.accountsDept?.status]
+    ]);
+
+    section('Document Details', [
+      ['Attachment Type', bill.attachmentType || 'N/A'],
+      ['Compliance 206AB', bill.compliance206AB]
     ]);
   };
 

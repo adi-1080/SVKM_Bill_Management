@@ -125,10 +125,32 @@ const filterBills = async (req, res) => {
       query.projectDescription = { $regex: projectDescription, $options: "i" };
     if (gstNumber) query.gstNumber = { $regex: gstNumber, $options: "i" };
 
-    // Exact match filters
+    // Exact match filters - with case-insensitive region
     if (status) query.status = status;
     if (natureOfWork) query.natureOfWork = natureOfWork;
-    if (region) query.region = region;
+    
+    // Improved region filtering with case insensitivity
+    if (region) {
+      // Handle region case-insensitively to match enum values
+      const validRegions = [
+        "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR",
+        "CHANDIGARH", "DELHI", "NOIDA", "NAGPUR", "GANSOLI", "HOSPITAL",
+        "DHULE", "SHIRPUR", "INDORE", "HYDERABAD"
+      ];
+      
+      const normalizedRegion = region.trim().toUpperCase();
+      const matchedRegion = validRegions.find(r => r === normalizedRegion ||
+                                              r.includes(normalizedRegion) ||
+                                              normalizedRegion.includes(r));
+      
+      if (matchedRegion) {
+        query.region = matchedRegion;
+      } else {
+        // If no direct match, use regex for partial matching
+        query.region = { $regex: region, $options: "i" };
+      }
+    }
+    
     if (currency) query.currency = currency;
     if (poCreated) query.poCreated = poCreated;
     if (compliance206AB) query.compliance206AB = compliance206AB;
