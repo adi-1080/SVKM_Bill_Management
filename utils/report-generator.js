@@ -20,7 +20,52 @@ const flattenBill = (bill) => {
   return flatten(rest);
 };
 
-// Excel Report with specific fields and headers
+// Excel Report - SIMPLIFIED VERSION
+// NOTE: Complex Excel report formatting has been delegated to the frontend
+// This version provides basic data export without complex formatting
+export const generateExcelReport = async (billIds) => {
+  const bills = await Bill.find({ _id: { $in: billIds } }).lean();
+  console.log("Total bills : ", bills.length);
+  
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Bills Report");
+  
+  // Define basic columns - frontend will handle specific formatting and headers
+  if (bills.length > 0) {
+    // Use the keys from the first bill to create columns
+    const flattenedBill = flattenBill(bills[0]);
+    const columns = Object.keys(flattenedBill).map(key => ({
+      header: key,
+      key: key,
+      width: 20
+    }));
+    
+    worksheet.columns = columns;
+    
+    // Simple header formatting
+    worksheet.getRow(1).font = { bold: true };
+    
+    // Add data rows
+    bills.forEach(bill => {
+      worksheet.addRow(flattenBill(bill));
+    });
+  } else {
+    // If no bills, add a placeholder row
+    worksheet.columns = [
+      { header: 'No Data', key: 'noData', width: 20 }
+    ];
+    worksheet.addRow({ noData: 'No bills found with the provided IDs' });
+  }
+  
+  return workbook.xlsx.writeBuffer();
+};
+
+/*
+ * ORIGINAL EXCEL REPORT GENERATION CODE - COMMENTED OUT
+ * This functionality has been delegated to the frontend
+ * The code below is kept for reference purposes only
+ */
+/*
 export const generateExcelReport = async (billIds) => {
   const bills = await Bill.find({ _id: { $in: billIds } }).lean();
   console.log("Total bills : ", bills.length);
@@ -204,6 +249,7 @@ export const generateExcelReport = async (billIds) => {
   
   return workbook.xlsx.writeBuffer();
 };
+*/
 
 // PDF Report - One bill per page with improved layout
 export const generatePDFReport = async (billIds) => {
