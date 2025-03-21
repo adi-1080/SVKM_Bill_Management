@@ -1,7 +1,7 @@
 import express from 'express';
 import statController from '../controllers/stat-controller.js';
-import { authenticate } from '../middleware/auth-middleware.js';
-import { authorize } from '../middleware/auth-middleware.js';
+import { authenticate } from '../middleware/middleware.js';
+import { authorize } from '../middleware/middleware.js';
 
 const router = express.Router();
 
