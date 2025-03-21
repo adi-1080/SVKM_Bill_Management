@@ -42,4 +42,7 @@ router.post("/generate-report", reportController.generateReport);
 // Import bills from file route
 router.post("/import-report", reportController.importBills);
 
+// New route for patching bills through Excel uploads
+router.post("/patch-bills", reportController.patchBillsFromExcel);
+
 export default router;
