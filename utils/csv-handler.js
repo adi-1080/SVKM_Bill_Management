@@ -1184,8 +1184,44 @@ const mergeWithExisting = (existingData, newData) => {
       const existingValue = existing[key];
       const newValue = updates[key];
       
-      // Case 1: New value is null/undefined/empty string - don't overwrite existing data
-      if (newValue === null || newValue === undefined || newValue === '') {
+      // Special handling for GST Number field
+      if (key === 'gstNumber') {
+        // Check if the new value is a placeholder GST value
+        const isPlaceholderGST = !newValue || 
+          newValue === '' || 
+          newValue === 'NOTPROVIDED' || 
+          newValue === 'NOT PROVIDED' || 
+          newValue === 'NotProvided' || 
+          newValue === 'Not Provided' || 
+          newValue === 'N/A' || 
+          newValue === 'NA';
+          
+        // Check if existing value looks like a valid GST (15 chars)
+        const hasValidExistingGST = existingValue && 
+          typeof existingValue === 'string' && 
+          existingValue.length === 15 &&
+          !['NOTPROVIDED', 'NOT PROVIDED', 'NotProvided', 'Not Provided'].includes(existingValue);
+          
+        if (isPlaceholderGST && hasValidExistingGST) {
+          // Keep the existing valid GST number instead of overwriting with placeholder
+          console.log(`Preserving existing GST number: ${existingValue} instead of using placeholder: ${newValue}`);
+          return; // Skip this update
+        }
+      }
+      
+      // Check if the new value is a placeholder or empty value
+      const isPlaceholderValue = 
+        newValue === null || 
+        newValue === undefined || 
+        newValue === '' || 
+        newValue === 'Not Provided' || 
+        newValue === 'Not provided' || 
+        newValue === 'not provided' ||
+        newValue === 'N/A' ||
+        newValue === 'n/a';
+      
+      // Case 1: New value is null/undefined/empty string/placeholder - don't overwrite existing data
+      if (isPlaceholderValue) {
         // Keep existing value
       }
       // Case 2: Both are objects (but not Date) - recursive merge
