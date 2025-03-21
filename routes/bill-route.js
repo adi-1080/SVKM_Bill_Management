@@ -21,8 +21,8 @@ router.post('/workflow/:id/advance', validateWorkflowTransition, billController.
 router.post('/workflow/:id/revert', validateWorkflowTransition, billController.revertWorkflow);
 router.post('/workflow/:id/reject', validateWorkflowTransition, billController.rejectBill);
 router.post('/workflow/:id/recover', validateWorkflowTransition, billController.recoverRejectedBill);
-// router.get('/workflow/:id/history', billController.getWorkflowHistory);
-// router.get('/workflow/state/:state', validateStateAccess, billController.getBillsByWorkflowState);
+ router.get('/workflow/:id/history', billController.getWorkflowHistory);
+ router.get('/workflow/state/:state', validateStateAccess, billController.getBillsByWorkflowState);
 
 // Workflow state update
 router.put('/:id/workflow', authenticate, billController.updateWorkflowState);
