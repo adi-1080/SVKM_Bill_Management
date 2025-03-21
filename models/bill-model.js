@@ -303,6 +303,60 @@ billSchema.pre('save', function(next) {
     this.accountsDept.status = 'unpaid';
   }
   
+  // Fix any date fields that are in string format
+  if (this._importMode) {
+    // Find all date fields in the schema and convert strings to Date objects
+    Object.keys(this.schema.paths).forEach(path => {
+      const schemaType = this.schema.paths[path];
+      
+      // Only process Date fields
+      if (schemaType.instance === 'Date') {
+        const value = this.get(path);
+        
+        // If it's a string, try to convert it or set to null
+        if (typeof value === 'string') {
+          try {
+            console.log(`[Pre-save] Converting string date for ${path}: "${value}"`);
+            
+            // First, try built-in Date parsing
+            const dateObj = new Date(value);
+            
+            if (!isNaN(dateObj.getTime())) {
+              this.set(path, dateObj);
+              console.log(`[Pre-save] Converted ${path} to Date: ${dateObj}`);
+            } else {
+              // If DD-MM-YYYY format, try manual parsing
+              if (value.includes('-')) {
+                const parts = value.split('-');
+                if (parts.length === 3) {
+                  const [day, month, year] = parts;
+                  const parsedDate = new Date(
+                    parseInt(year, 10),
+                    parseInt(month, 10) - 1,
+                    parseInt(day, 10)
+                  );
+                  
+                  if (!isNaN(parsedDate.getTime())) {
+                    this.set(path, parsedDate);
+                    console.log(`[Pre-save] Manually converted ${path} to Date: ${parsedDate}`);
+                    return; // Continue to next field
+                  }
+                }
+              }
+              
+              // If all parsing fails, set to null
+              console.log(`[Pre-save] Could not parse date for ${path}, setting to null`);
+              this.set(path, null);
+            }
+          } catch (error) {
+            console.error(`[Pre-save] Error converting date for ${path}:`, error);
+            this.set(path, null);
+          }
+        }
+      }
+    });
+  }
+  
   // Update workflow lastUpdated timestamp whenever the document is saved
   if (this.workflowState) {
     this.workflowState.lastUpdated = new Date();

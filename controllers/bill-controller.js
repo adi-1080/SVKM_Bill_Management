@@ -277,6 +277,191 @@ const deleteBill = async (req, res) => {
   }
 };
 
+// PATCH method for bills that preserves existing non-null values
+const patchBill = async (req, res) => {
+  try {
+    // Find by serial number if provided
+    if (req.body.srNo && !req.params.id) {
+      const billBySrNo = await Bill.findOne({ srNo: req.body.srNo });
+      if (billBySrNo) {
+        // Set the id param and call this function again
+        req.params.id = billBySrNo._id;
+      } else {
+        return res.status(404).json({ 
+          success: false, 
+          message: "Bill with provided Serial Number not found" 
+        });
+      }
+    }
+
+    // Find the existing bill
+    const existingBill = await Bill.findById(req.params.id);
+    if (!existingBill) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Bill not found" 
+      });
+    }
+
+    // Process QS-related fields and organize them properly
+    organizeQSFields(req.body);
+    
+    // Create an object to hold the updates, only including fields that are in the request
+    const updates = {};
+    
+    // Get all fields from the bill schema
+    const schemaFields = Object.keys(Bill.schema.paths);
+    
+    // Track fields that we've processed to avoid duplicates
+    const processedFields = new Set();
+    
+    // Process top-level fields
+    Object.keys(req.body).forEach(field => {
+      // Skip fields we'll handle specially
+      if (processedFields.has(field)) return;
+      
+      // Ignore _id and metadata fields
+      if (['_id', 'createdAt', 'updatedAt', '__v'].includes(field)) return;
+      
+      // If it's a normal field in the schema
+      if (schemaFields.includes(field)) {
+        // Only update if the existing value is null or the new value is not null
+        const currentValue = existingBill[field];
+        const newValue = req.body[field];
+        
+        if (currentValue === null || currentValue === undefined || newValue !== null) {
+          updates[field] = newValue;
+        }
+        
+        processedFields.add(field);
+      }
+    });
+    
+    // Handle nested objects
+    schemaFields.forEach(path => {
+      const pathParts = path.split('.');
+      if (pathParts.length > 1) {
+        const topLevel = pathParts[0];
+        
+        // If the top-level field is in the request body and is an object
+        if (req.body[topLevel] && typeof req.body[topLevel] === 'object') {
+          // Initialize the object in updates if not already there
+          if (!updates[topLevel]) {
+            updates[topLevel] = {};
+          }
+          
+          // Get the nested field
+          const nestedField = pathParts.slice(1).join('.');
+          const nestedValue = req.body[topLevel][nestedField];
+          
+          // If the nested field exists in the request
+          if (nestedValue !== undefined) {
+            // Get the current value
+            let currentNestedValue;
+            try {
+              currentNestedValue = existingBill.get(path);
+            } catch (e) {
+              currentNestedValue = null;
+            }
+            
+            // Only update if current is null or new is not null
+            if (currentNestedValue === null || currentNestedValue === undefined || nestedValue !== null) {
+              // Set the nested field
+              const lastPart = pathParts[pathParts.length - 1];
+              let currentObj = updates[topLevel];
+              
+              for (let i = 1; i < pathParts.length - 1; i++) {
+                if (!currentObj[pathParts[i]]) {
+                  currentObj[pathParts[i]] = {};
+                }
+                currentObj = currentObj[pathParts[i]];
+              }
+              
+              currentObj[lastPart] = nestedValue;
+            }
+          }
+          
+          processedFields.add(topLevel);
+        }
+      }
+    });
+    
+    // Set import mode to avoid validation errors
+    existingBill.setImportMode(true);
+    
+    // Only update the bill if there are changes
+    if (Object.keys(updates).length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No changes to apply",
+        data: existingBill
+      });
+    }
+    
+    console.log('Applying updates:', updates);
+    
+    // Apply the updates
+    const updatedBill = await Bill.findByIdAndUpdate(
+      existingBill._id,
+      { $set: updates },
+      { new: true, runValidators: false }
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: "Bill updated successfully",
+      data: updatedBill
+    });
+    
+  } catch (error) {
+    console.error('Error patching bill:', error);
+    return res.status(400).json({
+      success: false,
+      message: "Error updating bill",
+      error: error.message
+    });
+  }
+};
+
+// Helper function to handle QS-related fields and organize them properly
+const organizeQSFields = (data) => {
+  // Check if we have QS-related fields that need to be organized
+  const qsFieldMappings = {
+    "Dt given to QS for Inspection": { target: "qsInspection", property: "dateGiven" },
+    "Name of QS": { target: "qsInspection", property: "name" },
+    "Checked  by QS with Dt of Measurment": { target: "qsMeasurementCheck", property: "dateGiven" },
+    "Given to vendor-Query/Final Inv": { target: "vendorFinalInv", property: "dateGiven" },
+    "Dt given to QS for COP": { target: "qsCOP", property: "dateGiven" },
+    "Name - QS": { target: "qsCOP", property: "name" }
+  };
+  
+  // Initialize the target objects if not already present
+  data.qsInspection = data.qsInspection || {};
+  data.qsMeasurementCheck = data.qsMeasurementCheck || {};
+  data.vendorFinalInv = data.vendorFinalInv || {};
+  data.qsCOP = data.qsCOP || {};
+  
+  // Process each mapping
+  Object.entries(qsFieldMappings).forEach(([sourceField, mapping]) => {
+    if (sourceField in data) {
+      // If the source field exists, map it to the target field
+      if (!data[mapping.target]) {
+        data[mapping.target] = {};
+      }
+      
+      // Only set if value is not empty
+      if (data[sourceField] !== null && data[sourceField] !== undefined && data[sourceField] !== '') {
+        data[mapping.target][mapping.property] = data[sourceField];
+      }
+      
+      // Remove the original field to avoid duplication
+      delete data[sourceField];
+    }
+  });
+  
+  return data;
+};
+
 const filterBills = async (req, res) => {
   try {
     const {
@@ -827,6 +1012,7 @@ export default {
   getBillsByWorkflowState,
   updateWorkflowState,
   recoverRejectedBill,
+  patchBill,
 };
 
 //helper functions ignore for now

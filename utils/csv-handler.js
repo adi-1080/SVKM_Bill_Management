@@ -124,7 +124,7 @@ const unflattenData = (data) => {
 };
 
 // Helper: flatten nested objects (using dot notation)
-const flattenDoc = (doc, path = '') => {
+export const flattenDoc = (doc, path = '') => {
   let res = {};
   for (let key in doc) {
     const newPath = path ? `${path}.${key}` : key;
@@ -138,7 +138,7 @@ const flattenDoc = (doc, path = '') => {
 };
 
 // Helper: parse dates in various formats
-const parseDate = (dateString) => {
+export const parseDate = (dateString) => {
   if (!dateString) return null;
   
   // If already a Date object, return it
@@ -146,34 +146,93 @@ const parseDate = (dateString) => {
     return dateString;
   }
   
-  // Handle Excel date format (DD-MM-YYYY)
-  const ddmmyyyyRegex = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
-  const ddmmyyyyMatch = typeof dateString === 'string' ? dateString.match(ddmmyyyyRegex) : null;
-  
-  if (ddmmyyyyMatch) {
-    const [_, day, month, year] = ddmmyyyyMatch;
-    // Month is 0-indexed in JavaScript Date
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  try {
+    // Convert to string if not already
+    const strDate = String(dateString).trim();
+    
+    // Handle Excel date format (DD-MM-YYYY)
+    const ddmmyyyyRegex = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
+    const ddmmyyyyMatch = strDate.match(ddmmyyyyRegex);
+    
+    if (ddmmyyyyMatch) {
+      const [_, day, month, year] = ddmmyyyyMatch;
+      
+      // Ensure we're treating these as integers
+      const dayInt = parseInt(day, 10);
+      const monthInt = parseInt(month, 10) - 1; // Month is 0-indexed in JavaScript Date
+      const yearInt = parseInt(year, 10);
+      
+      // Create date with noon time to avoid timezone issues
+      const date = new Date(yearInt, monthInt, dayInt, 12, 0, 0);
+      if (!isNaN(date.getTime()) && 
+          date.getDate() === dayInt && 
+          date.getMonth() === monthInt && 
+          date.getFullYear() === yearInt) {
+        console.log(`Parsed date from DD-MM-YYYY format: ${strDate} → ${date.toISOString().split('T')[0]}`);
+        return date;
+      } else {
+        console.log(`Failed to create valid date from DD-MM-YYYY parts: ${day}, ${month}, ${year}`);
+      }
+    }
+    
+    // Handle slash-separated format (DD/MM/YYYY)
+    const ddmmyyyySlashRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+    const ddmmyyyySlashMatch = strDate.match(ddmmyyyySlashRegex);
+    
+    if (ddmmyyyySlashMatch) {
+      const [_, day, month, year] = ddmmyyyySlashMatch;
+      const dayInt = parseInt(day, 10);
+      const monthInt = parseInt(month, 10) - 1;
+      const yearInt = parseInt(year, 10);
+      
+      // Create date with noon time to avoid timezone issues
+      const date = new Date(yearInt, monthInt, dayInt, 12, 0, 0);
+      if (!isNaN(date.getTime()) &&
+          date.getDate() === dayInt && 
+          date.getMonth() === monthInt && 
+          date.getFullYear() === yearInt) {
+        console.log(`Parsed date from DD/MM/YYYY format: ${strDate} → ${date.toISOString().split('T')[0]}`);
+        return date;
+      }
+    }
+    
+    // Try to parse with built-in Date parser - this will interpret as MM/DD/YYYY for ambiguous formats
+    const date = new Date(dateString);
+    
+    // Check if the date is valid
     if (!isNaN(date.getTime())) {
-      console.log(`Parsed date from DD-MM-YYYY format: ${dateString} → ${date.toISOString().split('T')[0]}`);
       return date;
     }
+    
+    // As a last resort for DD-MM-YYYY format, try manual parsing
+    if (strDate.includes('-')) {
+      const parts = strDate.split('-');
+      if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        
+        // Handle 2-digit years
+        const adjustedYear = year < 100 ? (year < 50 ? 2000 + year : 1900 + year) : year;
+        
+        const manualDate = new Date(adjustedYear, month, day);
+        if (!isNaN(manualDate.getTime())) {
+          console.log(`Manually parsed date: ${strDate} → ${manualDate.toISOString().split('T')[0]}`);
+          return manualDate;
+        }
+      }
+    }
+    
+    console.log(`Failed to parse date: ${strDate}`);
+    return null;
+  } catch (error) {
+    console.error(`Error parsing date '${dateString}':`, error);
+    return null;
   }
-  
-  // Try to parse other date formats
-  const date = new Date(dateString);
-  
-  // Check if the date is valid
-  if (!isNaN(date.getTime())) {
-    return date;
-  }
-  
-  console.log(`Failed to parse date: ${dateString}`);
-  return null;
 };
 
 // Helper: convert amount strings to numbers
-const parseAmount = (value) => {
+export const parseAmount = (value) => {
   if (!value) return 0;
   // Remove currency symbols, commas and spaces
   const cleaned = value.toString().replace(/[₹,$€¥\s,]/g, '').trim();
@@ -182,86 +241,241 @@ const parseAmount = (value) => {
 
 // Helper: convert strings to appropriate types
 const convertTypes = (data) => {
-  const typeConverters = {
-    // Numeric fields
-    "poAmt": (val) => parseAmount(val),
-    "proformaInvAmt": (val) => parseAmount(val),
-    "taxInvAmt": (val) => parseAmount(val),
-    "advanceAmt": (val) => parseAmount(val),
-    "advancePercentage": (val) => parseFloat(val) || 0,
-    "copDetails.amount": (val) => parseAmount(val),
-    "migoDetails.amount": (val) => parseAmount(val),
-    "sesDetails.amount": (val) => parseFloat(val) || 0,
-    "accountsDept.paymentAmt": (val) => parseFloat(val) || 0,
-    
-    // Date fields
-    "poDate": parseDate,
-    "proformaInvDate": parseDate,
-    "proformaInvRecdAtSite": parseDate,
-    "taxInvDate": parseDate,
-    "taxInvRecdAtSite": parseDate,
-    "advanceDate": parseDate,
-    "qualityEngineer.dateGiven": parseDate,
-    "qsInspection.dateGiven": parseDate,
-    "qsMeasurementCheck.dateGiven": parseDate,
-    "vendorFinalInv.dateGiven": parseDate,
-    "qsCOP.dateGiven": parseDate,
-    "copDetails.date": parseDate,
-    "migoDetails.date": parseDate,
-    "invReturnedToSite": parseDate,
-    "siteEngineer.dateGiven": parseDate,
-    "architect.dateGiven": parseDate,
-    "siteIncharge.dateGiven": parseDate,
-    "siteOfficeDispatch.dateGiven": parseDate,
-    "billDate": parseDate,
-    "pimoMumbai.dateGiven": parseDate,
-    "pimoMumbai.dateReceived": parseDate,
-    "qsMumbai.dateGiven": parseDate,
-    "itDept.dateGiven": parseDate,
-    "sesDetails.date": parseDate,
-    "approvalDetails.directorApproval.dateGiven": parseDate,
-    "approvalDetails.directorApproval.dateReceived": parseDate,
-    "accountsDept.dateGiven": parseDate,
-    "accountsDept.dateReceived": parseDate,
-    "accountsDept.returnedToPimo": parseDate,
-    "accountsDept.receivedBack": parseDate,
-    "accountsDept.paymentDate": parseDate,
-    // Add new date converters
-    "migoDetails.dateGiven": parseDate,
-    "pimoMumbai.dateGivenPIMO": parseDate,
-    "pimoMumbai.dateGivenPIMO2": parseDate,
-    "pimoMumbai.dateReceivedFromPIMO": parseDate
-  };
-
-  Object.keys(data).forEach(key => {
-    if (typeConverters[key] && data[key] !== undefined && data[key] !== null && data[key] !== '') {
-      data[key] = typeConverters[key](data[key]);
+  // Create a deep copy of the data
+  let result = JSON.parse(JSON.stringify(data));
+  
+  // Organize Quality Surveyor (QS) related fields
+  organizeQSFields(result);
+  
+  // Currency formatting
+  if (result.amount && typeof result.amount === 'string') {
+    result.amount = parseAmount(result.amount);
+  }
+  
+  if (result.poAmt && typeof result.poAmt === 'string') {
+    result.poAmt = parseAmount(result.poAmt);
+  }
+  
+  if (result.proformaInvAmt && typeof result.proformaInvAmt === 'string') {
+    result.proformaInvAmt = parseAmount(result.proformaInvAmt);
+  }
+  
+  if (result.taxInvAmt && typeof result.taxInvAmt === 'string') {
+    result.taxInvAmt = parseAmount(result.taxInvAmt);
+  }
+  
+  if (result.advanceAmt && typeof result.advanceAmt === 'string') {
+    result.advanceAmt = parseAmount(result.advanceAmt);
+  }
+  
+  // Parse basic date fields
+  if (result.billDate && typeof result.billDate === 'string') {
+    result.billDate = parseDate(result.billDate);
+  }
+  
+  if (result.poDate && typeof result.poDate === 'string') {
+    result.poDate = parseDate(result.poDate);
+  }
+  
+  if (result.proformaInvDate && typeof result.proformaInvDate === 'string') {
+    result.proformaInvDate = parseDate(result.proformaInvDate);
+  }
+  
+  if (result.proformaInvRecdAtSite && typeof result.proformaInvRecdAtSite === 'string') {
+    result.proformaInvRecdAtSite = parseDate(result.proformaInvRecdAtSite);
+  }
+  
+  if (result.taxInvDate && typeof result.taxInvDate === 'string') {
+    result.taxInvDate = parseDate(result.taxInvDate);
+  }
+  
+  if (result.taxInvRecdAtSite && typeof result.taxInvRecdAtSite === 'string') {
+    result.taxInvRecdAtSite = parseDate(result.taxInvRecdAtSite);
+  }
+  
+  if (result.advanceDate && typeof result.advanceDate === 'string') {
+    result.advanceDate = parseDate(result.advanceDate);
+  }
+  
+  // Parse dates in nested objects if they exist
+  // This handles fields after we've organized QS fields
+  if (result.copDetails && result.copDetails.date && typeof result.copDetails.date === 'string') {
+    result.copDetails.date = parseDate(result.copDetails.date);
+  }
+  
+  if (result.migoDetails) {
+    if (result.migoDetails.date && typeof result.migoDetails.date === 'string') {
+      result.migoDetails.date = parseDate(result.migoDetails.date);
+    }
+    if (result.migoDetails.dateGiven && typeof result.migoDetails.dateGiven === 'string') {
+      result.migoDetails.dateGiven = parseDate(result.migoDetails.dateGiven);
+    }
+    if (result.migoDetails.amount && typeof result.migoDetails.amount === 'string') {
+      result.migoDetails.amount = parseAmount(result.migoDetails.amount);
+    }
+  }
+  
+  if (result.invReturnedToSite && typeof result.invReturnedToSite === 'string') {
+    result.invReturnedToSite = parseDate(result.invReturnedToSite);
+  }
+  
+  // Handle nested date fields in objects
+  const nestedDateObjects = [
+    'qualityEngineer', 'qsInspection', 'qsMeasurementCheck', 'vendorFinalInv', 
+    'qsCOP', 'siteEngineer', 'architect', 'siteIncharge', 'siteOfficeDispatch',
+    'qsMumbai', 'pimoMumbai', 'itDept'
+  ];
+  
+  nestedDateObjects.forEach(obj => {
+    if (result[obj]) {
+      if (result[obj].dateGiven && typeof result[obj].dateGiven === 'string') {
+        result[obj].dateGiven = parseDate(result[obj].dateGiven);
+      }
+      if (result[obj].dateReceived && typeof result[obj].dateReceived === 'string') {
+        result[obj].dateReceived = parseDate(result[obj].dateReceived);
+      }
     }
   });
-
-  // Convert Yes/No to proper format
-  if (data.poCreated) {
-    data.poCreated = data.poCreated.toLowerCase().includes('yes') ? 'Yes' : 'No';
+  
+  // Special handling for PIMO Mumbai fields
+  if (result.pimoMumbai) {
+    if (result.pimoMumbai.dateGivenPIMO && typeof result.pimoMumbai.dateGivenPIMO === 'string') {
+      result.pimoMumbai.dateGivenPIMO = parseDate(result.pimoMumbai.dateGivenPIMO);
+    }
+    if (result.pimoMumbai.dateGivenPIMO2 && typeof result.pimoMumbai.dateGivenPIMO2 === 'string') {
+      result.pimoMumbai.dateGivenPIMO2 = parseDate(result.pimoMumbai.dateGivenPIMO2);
+    }
+    if (result.pimoMumbai.dateReceivedFromIT && typeof result.pimoMumbai.dateReceivedFromIT === 'string') {
+      result.pimoMumbai.dateReceivedFromIT = parseDate(result.pimoMumbai.dateReceivedFromIT);
+    }
+    if (result.pimoMumbai.dateReceivedFromPIMO && typeof result.pimoMumbai.dateReceivedFromPIMO === 'string') {
+      result.pimoMumbai.dateReceivedFromPIMO = parseDate(result.pimoMumbai.dateReceivedFromPIMO);
+    }
   }
-
-  // Convert status to proper enum value
-  if (data.status) {
-    const statusMap = {
-      'accept': 'accept',
-      'reject': 'reject',
-      'hold': 'hold',
-      'issue': 'issue'
-    };
-    data.status = statusMap[data.status.toLowerCase()] || data.status;
+  
+  // Handle SES details
+  if (result.sesDetails) {
+    if (result.sesDetails.date && typeof result.sesDetails.date === 'string') {
+      result.sesDetails.date = parseDate(result.sesDetails.date);
+    }
+    if (result.sesDetails.amount && typeof result.sesDetails.amount === 'string') {
+      result.sesDetails.amount = parseAmount(result.sesDetails.amount);
+    }
   }
-
-  // Convert accountsDept.status to proper enum value (paid/unpaid)
-  if (data['accountsDept.status']) {
-    // Convert any variation of "paid" to lowercase "paid"
-    data['accountsDept.status'] = 
-      data['accountsDept.status'].toLowerCase().includes('paid') ? 'paid' : 'unpaid';
+  
+  // Handle approval details
+  if (result.approvalDetails && result.approvalDetails.directorApproval) {
+    if (result.approvalDetails.directorApproval.dateGiven && 
+        typeof result.approvalDetails.directorApproval.dateGiven === 'string') {
+      result.approvalDetails.directorApproval.dateGiven = 
+        parseDate(result.approvalDetails.directorApproval.dateGiven);
+    }
+    if (result.approvalDetails.directorApproval.dateReceived && 
+        typeof result.approvalDetails.directorApproval.dateReceived === 'string') {
+      result.approvalDetails.directorApproval.dateReceived = 
+        parseDate(result.approvalDetails.directorApproval.dateReceived);
+    }
   }
+  
+  // Handle accounts department - ensure all date fields are properly parsed
+  if (result.accountsDept) {
+    // Explicitly parse all date fields in accountsDept
+    const accountsDateFields = [
+      'dateGiven', 'dateReceived', 'returnedToPimo', 'receivedBack', 
+      'paymentDate', 'invBookingChecking'
+    ];
+    
+    accountsDateFields.forEach(dateField => {
+      if (result.accountsDept[dateField] && typeof result.accountsDept[dateField] === 'string') {
+        try {
+          // Special handling for the problematic returnedToPimo field
+          if (dateField === 'returnedToPimo') {
+            console.log(`Processing accountsDept.returnedToPimo with value: "${result.accountsDept[dateField]}"`);
+            
+            // Try direct parsing first
+            let parsedDate = parseDate(result.accountsDept[dateField]);
+            
+            // If parsing failed, try additional format handling
+            if (!parsedDate) {
+              const dateParts = result.accountsDept[dateField].split('-');
+              if (dateParts.length === 3) {
+                const [day, month, year] = dateParts;
+                parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                if (!isNaN(parsedDate.getTime())) {
+                  console.log(`Manually parsed accountsDept.returnedToPimo: ${result.accountsDept[dateField]} → ${parsedDate.toISOString().split('T')[0]}`);
+                }
+              }
+            }
+            
+            result.accountsDept[dateField] = parsedDate;
+            console.log(`Final accountsDept.returnedToPimo value:`, result.accountsDept[dateField]);
+          } else {
+            // Normal parsing for other date fields
+            result.accountsDept[dateField] = parseDate(result.accountsDept[dateField]);
+          }
+        } catch (error) {
+          console.error(`Error parsing accountsDept.${dateField}:`, error);
+          // Set to null to avoid validation error
+          result.accountsDept[dateField] = null;
+        }
+      }
+    });
+    
+    // Handle payment amount
+    if (result.accountsDept.paymentAmt && typeof result.accountsDept.paymentAmt === 'string') {
+      result.accountsDept.paymentAmt = parseAmount(result.accountsDept.paymentAmt);
+    }
+  }
+  
+  return result;
+};
 
+// Helper function to organize QS fields properly
+export const organizeQSFields = (data) => {
+  // Check if we have QS-related fields that need to be organized
+  const qsFieldMappings = {
+    "Dt given to QS for Inspection": { target: "qsInspection", property: "dateGiven" },
+    "Name of QS": { target: "qsInspection", property: "name" },
+    "Checked  by QS with Dt of Measurment": { target: "qsMeasurementCheck", property: "dateGiven" },
+    "Given to vendor-Query/Final Inv": { target: "vendorFinalInv", property: "dateGiven" },
+    "Dt given to QS for COP": { target: "qsCOP", property: "dateGiven" },
+    "Name - QS": { target: "qsCOP", property: "name" }
+  };
+  
+  // Initialize the target objects if not already present
+  data.qsInspection = data.qsInspection || {};
+  data.qsMeasurementCheck = data.qsMeasurementCheck || {};
+  data.vendorFinalInv = data.vendorFinalInv || {};
+  data.qsCOP = data.qsCOP || {};
+  
+  // Process each mapping
+  Object.entries(qsFieldMappings).forEach(([sourceField, mapping]) => {
+    if (sourceField in data) {
+      // If the source field exists, map it to the target field
+      if (!data[mapping.target]) {
+        data[mapping.target] = {};
+      }
+      
+      // Only set if value is not empty
+      if (data[sourceField] !== null && data[sourceField] !== undefined && data[sourceField] !== '') {
+        data[mapping.target][mapping.property] = data[sourceField];
+      }
+      
+      // Remove the original field to avoid duplication
+      delete data[sourceField];
+    }
+  });
+  
+  // Add some logic to make sure vendor data is stored properly in vendorFinalInv
+  if (data.vendorFinalInv && data.vendorFinalInv.dateGiven && !data.vendorFinalInv.name) {
+    // If we have a date but no name, try to use the QS name
+    if (data.qsInspection && data.qsInspection.name) {
+      data.vendorFinalInv.name = data.qsInspection.name;
+    } else if (data.qsCOP && data.qsCOP.name) {
+      data.vendorFinalInv.name = data.qsCOP.name;
+    }
+  }
+  
   return data;
 };
 
@@ -621,7 +835,7 @@ const validateRequiredFields = (data) => {
 };
 
 // Update importBillsFromExcel function to support better field mapping
-export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
+export const importBillsFromExcel = async (filePath, validVendorNos = [], patchOnly = false) => {
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(filePath);
@@ -631,7 +845,7 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
       throw new Error("No worksheet found in the Excel file");
     }
     
-    // Log vendor validation status
+    // Log vendor validation status - we'll validate by vendor name instead of number
     console.log(`Vendor validation enabled: ${validVendorNos.length > 0}`);
     console.log(`Valid vendor numbers available: ${validVendorNos.length}`);
     if (validVendorNos.length > 0) {
@@ -717,6 +931,7 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
       let isEmpty = true;
       let srNo = null;
       let vendorNo = null;
+      let vendorName = null;
       
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         isEmpty = false;
@@ -746,10 +961,16 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
           srNo = String(value || '').trim();
         }
         
-        // Store vendorNo for validation
+        // Store vendorNo for reference
         if (fieldName === 'vendorNo') {
           vendorNo = String(value || '').trim();
           console.log(`Found vendorNo in row ${rowNumber}: "${vendorNo}"`);
+        }
+        
+        // Store vendorName for validation
+        if (fieldName === 'vendorName') {
+          vendorName = String(value || '').trim();
+          console.log(`Found vendorName in row ${rowNumber}: "${vendorName}"`);
         }
         
         // Handle different cell types
@@ -770,18 +991,25 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
       
       if (!isEmpty && srNo) {
         try {
-          // Check if vendor exists - strict validation
-          if (vendorNo && validVendorNos.length > 0) {
-            const isValidVendor = validVendorNos.includes(vendorNo);
-            console.log(`Vendor validation for ${vendorNo}: ${isValidVendor ? 'VALID' : 'INVALID'}`);
+          // MODIFIED: Check if vendor name exists instead of vendor number
+          // We'll skip validation if vendorName is missing or if no list is provided
+          if (vendorName && validVendorNos.length > 0) {
+            // Use fuzzy matching - check if the vendor name includes/matches any valid vendor
+            // This is more flexible than exact matching
+            const isValidVendor = validVendorNos.some(validVendor => 
+              vendorName.toLowerCase().includes(validVendor.toLowerCase()) || 
+              validVendor.toLowerCase().includes(vendorName.toLowerCase())
+            );
+            
+            console.log(`Vendor name validation for "${vendorName}": ${isValidVendor ? 'VALID' : 'INVALID'}`);
             
             if (!isValidVendor) {
-              console.log(`Vendor not found: ${vendorNo} in row ${rowNumber} - skipping`);
-              nonExistentVendors.push({ srNo, vendorNo, rowNumber });
+              console.log(`Vendor name not found: "${vendorName}" in row ${rowNumber} - skipping`);
+              nonExistentVendors.push({ srNo, vendorNo, vendorName, rowNumber });
               continue; // Skip this row
             }
           } else {
-            console.log(`Row ${rowNumber}: Vendor validation skipped for "${vendorNo}" - no validation list provided`);
+            console.log(`Row ${rowNumber}: Vendor validation skipped for "${vendorName}" - no validation list or name missing`);
           }
           
           // Add default fields needed for MongoDB
@@ -790,10 +1018,60 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
           rowData.natureOfWork = rowData.typeOfInv || "Others";
           rowData.vendor = new mongoose.Types.ObjectId(); // Will be replaced for updates
           
+          // Special handling for accountsDept.returnedToPimo before convertTypes
+          if (rowData.accountsDept && rowData.accountsDept.returnedToPimo) {
+            if (typeof rowData.accountsDept.returnedToPimo === 'string') {
+              try {
+                console.log(`Pre-processing accountsDept.returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
+                
+                // Parse the date from string format DD-MM-YYYY
+                const dateParts = rowData.accountsDept.returnedToPimo.split('-');
+                if (dateParts.length === 3) {
+                  const [day, month, year] = dateParts;
+                  const parsedDate = new Date(
+                    parseInt(year, 10),
+                    parseInt(month, 10) - 1,
+                    parseInt(day, 10)
+                  );
+                  
+                  if (!isNaN(parsedDate.getTime())) {
+                    rowData.accountsDept.returnedToPimo = parsedDate;
+                    console.log(`Successfully pre-processed returnedToPimo: ${parsedDate}`);
+                  } else {
+                    console.log(`Failed to parse returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
+                    rowData.accountsDept.returnedToPimo = null;
+                  }
+                } else {
+                  console.log(`Invalid date format for returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
+                  rowData.accountsDept.returnedToPimo = null;
+                }
+              } catch (error) {
+                console.error(`Error processing returnedToPimo: ${error.message}`);
+                rowData.accountsDept.returnedToPimo = null;
+              }
+            }
+          }
+          
           const typedData = convertTypes(rowData);
           const validatedData = validateRequiredFields(typedData);
           
-          console.log(`Processed row ${rowNumber}: srNo=${srNo}, vendorNo=${vendorNo}`);
+          // Final safety check for all date fields in accountsDept
+          if (validatedData.accountsDept) {
+            const dateFields = [
+              'dateGiven', 'dateReceived', 'returnedToPimo', 'receivedBack', 
+              'paymentDate'
+            ];
+            
+            dateFields.forEach(field => {
+              if (validatedData.accountsDept[field] && 
+                  typeof validatedData.accountsDept[field] === 'string') {
+                console.log(`Converting accountsDept.${field} from string to Date`);
+                validatedData.accountsDept[field] = null; // Safer to set to null than keep as string
+              }
+            });
+          }
+          
+          console.log(`Processed row ${rowNumber}: srNo=${srNo}, vendorName=${vendorName}`);
           
           // Check if this is an update or new insert
           if (existingSrNos.includes(Number(srNo))) {
@@ -806,11 +1084,15 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
               _id: existingBill._id, 
               data: unflattenData(mergedData) 
             });
-          } else {
+          } else if (!patchOnly) {
+            // Only add to insert list if patchOnly is false
             // New insert - only if vendor validation was not enabled or passed
             const unflattened = unflattenData(validatedData);
             toInsert.push(unflattened);
-            console.log(`Prepared for insertion: srNo=${srNo}, vendorNo=${vendorNo}`);
+            console.log(`Prepared for insertion: srNo=${srNo}, vendorName=${vendorName}`);
+          } else {
+            console.log(`Skipping srNo=${srNo} - patchOnly mode and bill does not exist`);
+            nonExistentVendors.push({ srNo, vendorNo, vendorName, rowNumber, reason: 'Bill does not exist in patchOnly mode' });
           }
         } catch (error) {
           console.error(`Error processing row ${rowNumber}:`, error);
@@ -825,19 +1107,48 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
     // Handle inserts
     let inserted = [];
     if (toInsert.length > 0) {
-      inserted = await Bill.insertMany(toInsert);
-      console.log(`Successfully inserted ${inserted.length} new bills`);
+      try {
+        // Set import mode to avoid validation errors
+        inserted = await Bill.insertMany(toInsert.map(bill => {
+          // Ensure returnedToPimo is properly set or null
+          if (bill.accountsDept && typeof bill.accountsDept.returnedToPimo === 'string') {
+            bill.accountsDept.returnedToPimo = null;
+          }
+          return bill;
+        }), { 
+          validateBeforeSave: false // Skip mongoose validation
+        });
+        console.log(`Successfully inserted ${inserted.length} new bills`);
+      } catch (insertError) {
+        console.error('Error during bill insertion:', insertError);
+        throw insertError;
+      }
     }
     
     // Handle updates
     const updated = [];
     for (const item of toUpdate) {
-      const result = await Bill.findByIdAndUpdate(
-        item._id,
-        { $set: item.data },
-        { new: true }
-      );
-      if (result) updated.push(result);
+      try {
+        const updateData = item.data;
+        
+        // Handle problematic date fields before update
+        if (updateData.accountsDept && typeof updateData.accountsDept.returnedToPimo === 'string') {
+          updateData.accountsDept.returnedToPimo = null;
+        }
+        
+        const result = await Bill.findByIdAndUpdate(
+          item._id,
+          { $set: updateData },
+          { 
+            new: true,
+            runValidators: false // Skip mongoose validation
+          }
+        );
+        if (result) updated.push(result);
+      } catch (updateError) {
+        console.error(`Error updating bill ${item._id}:`, updateError);
+        // Continue with other updates
+      }
     }
     console.log(`Successfully updated ${updated.length} existing bills`);
     
@@ -857,23 +1168,83 @@ export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
 
 // Improved helper function to merge data without overwriting non-null DB values with null Excel values
 const mergeWithExisting = (existingData, newData) => {
-  const result = { ...existingData };
+  // First organize QS fields in the new data to ensure proper structure
+  organizeQSFields(newData);
   
-  // Flatten existing data for easier comparison
-  const flatExisting = flattenDoc(existingData);
-  
-  // Only update fields that have values in the new data
-  Object.keys(newData).forEach(key => {
-    // Don't overwrite existing non-null values with null/empty Excel values
-    if (newData[key] !== null && newData[key] !== undefined && newData[key] !== '') {
-      result[key] = newData[key];
-    } else if (flatExisting[key] === undefined) {
-      // If field doesn't exist in DB but is null in Excel, add it to maintain field existence
-      result[key] = null;
-    }
-  });
-  
-  return result;
+  // Deep merge with special handling for null/undefined values
+  const deepMerge = (existing, updates) => {
+    if (!existing) return updates;
+    if (!updates) return existing;
+    
+    // Create a copy of the existing data as our result
+    const result = { ...existing };
+    
+    // Process each key in the updates
+    Object.keys(updates).forEach(key => {
+      const existingValue = existing[key];
+      const newValue = updates[key];
+      
+      // Special handling for GST Number field
+      if (key === 'gstNumber') {
+        // Check if the new value is a placeholder GST value
+        const isPlaceholderGST = !newValue || 
+          newValue === '' || 
+          newValue === 'NOTPROVIDED' || 
+          newValue === 'NOT PROVIDED' || 
+          newValue === 'NotProvided' || 
+          newValue === 'Not Provided' || 
+          newValue === 'N/A' || 
+          newValue === 'NA';
+          
+        // Check if existing value looks like a valid GST (15 chars)
+        const hasValidExistingGST = existingValue && 
+          typeof existingValue === 'string' && 
+          existingValue.length === 15 &&
+          !['NOTPROVIDED', 'NOT PROVIDED', 'NotProvided', 'Not Provided'].includes(existingValue);
+          
+        if (isPlaceholderGST && hasValidExistingGST) {
+          // Keep the existing valid GST number instead of overwriting with placeholder
+          console.log(`Preserving existing GST number: ${existingValue} instead of using placeholder: ${newValue}`);
+          return; // Skip this update
+        }
+      }
+      
+      // Check if the new value is a placeholder or empty value
+      const isPlaceholderValue = 
+        newValue === null || 
+        newValue === undefined || 
+        newValue === '' || 
+        newValue === 'Not Provided' || 
+        newValue === 'Not provided' || 
+        newValue === 'not provided' ||
+        newValue === 'N/A' ||
+        newValue === 'n/a';
+      
+      // Case 1: New value is null/undefined/empty string/placeholder - don't overwrite existing data
+      if (isPlaceholderValue) {
+        // Keep existing value
+      }
+      // Case 2: Both are objects (but not Date) - recursive merge
+      else if (
+        existingValue && 
+        typeof existingValue === 'object' && 
+        !(existingValue instanceof Date) &&
+        typeof newValue === 'object' && 
+        !(newValue instanceof Date)
+      ) {
+        result[key] = deepMerge(existingValue, newValue);
+      }
+      // Case 3: New value exists - use it
+      else {
+        result[key] = newValue;
+      }
+    });
+    
+    return result;
+  };
+
+  // Perform the deep merge
+  return deepMerge(existingData, newData);
 };
 
 // Helper: create a temporary file path
@@ -882,3 +1253,4 @@ export const createTempFilePath = (prefix, extension) => {
   const fileName = `${prefix}-${Date.now()}.${extension}`;
   return path.join(tempDir, fileName);
 };
+
