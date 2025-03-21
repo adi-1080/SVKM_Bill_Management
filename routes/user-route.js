@@ -7,7 +7,7 @@ import {
     registerUser,
     loginUser,
 } from "../controllers/user-controller.js";
-import authMiddleware from "../middleware/auth-middleware.js";
+import {authMiddleware} from "../middleware/middleware.js";
 
 const router = express.Router();
 

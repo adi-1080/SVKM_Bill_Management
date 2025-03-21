@@ -141,7 +141,26 @@ const flattenDoc = (doc, path = '') => {
 const parseDate = (dateString) => {
   if (!dateString) return null;
   
-  // Try to parse the date
+  // If already a Date object, return it
+  if (dateString instanceof Date) {
+    return dateString;
+  }
+  
+  // Handle Excel date format (DD-MM-YYYY)
+  const ddmmyyyyRegex = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
+  const ddmmyyyyMatch = typeof dateString === 'string' ? dateString.match(ddmmyyyyRegex) : null;
+  
+  if (ddmmyyyyMatch) {
+    const [_, day, month, year] = ddmmyyyyMatch;
+    // Month is 0-indexed in JavaScript Date
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) {
+      console.log(`Parsed date from DD-MM-YYYY format: ${dateString} → ${date.toISOString().split('T')[0]}`);
+      return date;
+    }
+  }
+  
+  // Try to parse other date formats
   const date = new Date(dateString);
   
   // Check if the date is valid
@@ -149,6 +168,7 @@ const parseDate = (dateString) => {
     return date;
   }
   
+  console.log(`Failed to parse date: ${dateString}`);
   return null;
 };
 
@@ -246,7 +266,7 @@ const convertTypes = (data) => {
 };
 
 // Import bills from a CSV file and load data into the model
-export const importBillsFromCSV = async (filePath) => {
+export const importBillsFromCSV = async (filePath, validVendorNos = []) => {
   try {
     // Read the CSV file
     const fileContent = fs.readFileSync(filePath, 'utf8');
@@ -257,7 +277,8 @@ export const importBillsFromCSV = async (filePath) => {
     console.log('CSV Headers:', headers);
     
     // Process data rows
-    const results = [];
+    const toInsert = [];
+    const nonExistentVendors = [];
     
     for (let i = 2; i < rows.length; i++) {
       // Skip empty rows
@@ -280,6 +301,16 @@ export const importBillsFromCSV = async (filePath) => {
           }
         }
       });
+
+      // Check if vendor exists
+      const vendorNo = rowData.vendorNo;
+      const srNo = rowData.srNo;
+      
+      if (vendorNo && validVendorNos.length > 0 && !validVendorNos.includes(vendorNo)) {
+        console.log(`Vendor not found: ${vendorNo} in row ${i} - skipping`);
+        nonExistentVendors.push({ srNo, vendorNo, rowNumber: i });
+        continue; // Skip this row
+      }
       
       // Add default fields needed for MongoDB
       rowData.billDate = rowData.taxInvDate || new Date().toISOString().split('T')[0];
@@ -293,12 +324,21 @@ export const importBillsFromCSV = async (filePath) => {
       const processedData = unflattenData(validatedData);
       
       console.log(`Processed row ${i}:`, processedData);
-      results.push(processedData);
+      toInsert.push(processedData);
     }
     
     // Insert into database
-    const inserted = await Bill.insertMany(results);
-    return inserted;
+    let inserted = [];
+    if (toInsert.length > 0) {
+      inserted = await Bill.insertMany(toInsert);
+    }
+    
+    return {
+      inserted,
+      nonExistentVendors,
+      totalProcessed: inserted.length,
+      totalSkipped: nonExistentVendors.length
+    };
     
   } catch (error) {
     console.error('CSV import error:', error);
@@ -306,9 +346,9 @@ export const importBillsFromCSV = async (filePath) => {
   }
 };
 
-// Update headerMapping with exact Excel headers
+// Update headerMapping with exact Excel headers and fix issues with duplicates
 const headerMapping = {
-  "Sr no": "srNo",
+  "Sr No": "srNo",
   "Sr no Old": "srNoOld",
   "Type of inv": "typeOfInv",
   "Region": "region",
@@ -330,7 +370,8 @@ const headerMapping = {
   "Tax Inv no": "taxInvNo",
   "Tax Inv Dt": "taxInvDate",
   "Currency": "currency",
-  "Tax Inv Amt ": "taxInvAmt", // Note the space after "Amt"
+  "Tax Inv Amt": "taxInvAmt",
+  "Tax Inv Amt ": "taxInvAmt",  // Both versions with and without space
   "Tax Inv Recd at site": "taxInvRecdAtSite",
   "Tax Inv Recd by": "taxInvRecdBy",
   "Department": "department",
@@ -339,15 +380,17 @@ const headerMapping = {
   "Attachment Type": "attachmentType",
   "Advance Dt": "advanceDate",
   "Advance Amt": "advanceAmt",
-  "Advance Percentage ": "advancePercentage", // Note the space
+  "Advance Percentage": "advancePercentage",
+  "Advance Percentage ": "advancePercentage",  // Both versions with and without space
   "Adv request entered by": "advRequestEnteredBy",
   "Dt given to Quality Engineer": "qualityEngineer.dateGiven",
   "Name of Quality Engineer": "qualityEngineer.name",
   "Dt given to QS for Inspection": "qsInspection.dateGiven",
-  "Name of QS": "qsInspection.name",
-  "Checked  by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven",
+  // QS Name fields will be handled dynamically in processing
+  "Name of QS": "qsInspection.name", // Default mapping, will be overridden contextually when needed
+  "Checked by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven",
+  "Checked  by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven", // With extra space
   "Given to vendor-Query/Final Inv": "vendorFinalInv.dateGiven",
-  "Name of QS": "vendorFinalInv.name", 
   "Dt given to QS for COP": "qsCOP.dateGiven",
   "Name - QS": "qsCOP.name",
   "COP Dt": "copDetails.date",
@@ -365,7 +408,8 @@ const headerMapping = {
   "Name of Architect": "architect.name",
   "Dt given-Site Incharge": "siteIncharge.dateGiven",
   "Name-Site Incharge": "siteIncharge.name",
-  "Remarks ": "remarks",
+  "Remarks": "remarks",
+  "Remarks ": "remarks", // With extra space
   "Dt given to Site Office for dispatch": "siteOfficeDispatch.dateGiven",
   "Name-Site Office": "siteOfficeDispatch.name",
   "Status": "status",
@@ -373,12 +417,11 @@ const headerMapping = {
   "Dt recd at PIMO Mumbai": "pimoMumbai.dateReceived",
   "Name recd by PIMO Mumbai": "pimoMumbai.receivedBy",
   "Dt given to QS Mumbai": "qsMumbai.dateGiven",
-  "Name of QS": "qsMumbai.name",
-  "Dt given to PIMO Mumbai ": "pimoMumbai.dateGivenPIMO",
+  "Name of QS": "qsMumbai.name", // This will be handled dynamically
+  "Dt given to PIMO Mumbai ": "pimoMumbai.dateGivenPIMO", // With space
   "Name -PIMO": "pimoMumbai.namePIMO",
   "Dt given to IT Dept": "itDept.dateGiven",
   "Name- given to IT Dept": "itDept.name",
-  "Dt given to PIMO Mumbai": "pimoMumbai.dateGivenPIMO2",
   "Name-given to PIMO": "pimoMumbai.namePIMO2",
   "SES no": "sesDetails.no",
   "SES Amt": "sesDetails.amount",
@@ -393,7 +436,8 @@ const headerMapping = {
   "Name -given by PIMO office": "accountsDept.givenBy",
   "Dt recd in Accts dept": "accountsDept.dateReceived",
   "Name recd by Accts dept": "accountsDept.receivedBy",
-  "Dt returned back to  PIMO": "accountsDept.returnedToPimo",
+  "Dt returned back to PIMO": "accountsDept.returnedToPimo",
+  "Dt returned back to  PIMO": "accountsDept.returnedToPimo", // With extra space
   "Dt recd back in Accts dept": "accountsDept.receivedBack",
   "Inv given for booking and checking": "accountsDept.invBookingChecking",
   "Payment instructions": "accountsDept.paymentInstructions",
@@ -404,7 +448,18 @@ const headerMapping = {
   "Accts Identification": "accountsDept.accountsIdentification",
   "Payment Amt": "accountsDept.paymentAmt",
   "Remarks Accts dept": "accountsDept.remarksAcctsDept",
-  "Status": "accountsDept.status"
+  "Status": "accountsDept.status" // This will be handled dynamically
+};
+
+// Map to identify which "Name of QS" and "Status" field is which based on its position
+const contextBasedMapping = {
+  // Maps a header to potential contextual fields around it
+  "Dt given to QS for Inspection": { nextField: "Name of QS", mapping: "qsInspection.name" },
+  "Given to vendor-Query/Final Inv": { nextField: "Name of QS", mapping: "vendorFinalInv.name" },
+  "Dt given to QS for COP": { nextField: "Name - QS", mapping: "qsCOP.name" },
+  "Name-Site Office": { nextField: "Status", mapping: "status" },
+  "Dt given to QS Mumbai": { nextField: "Name of QS", mapping: "qsMumbai.name" },
+  "Dt of Payment": { nextField: "Status", mapping: "accountsDept.status" }
 };
 
 // Add validation function for required fields with defaults
@@ -467,6 +522,11 @@ const validateRequiredFields = (data) => {
   // Ensure proper enum values for status
   if (data.status && !['accept', 'reject', 'hold', 'issue'].includes(data.status.toLowerCase())) {
     data.status = 'hold';
+  }
+  
+  // Ensure proper enum values for siteStatus
+  if (data.siteStatus && !['accept', 'reject'].includes(data.siteStatus.toLowerCase())) {
+    data.siteStatus = null;
   }
 
   // Ensure proper enum values for accountsDept.status
@@ -548,11 +608,20 @@ const validateRequiredFields = (data) => {
     console.log(`Final region value: "${data.region}"`);
   }
 
+  // If payment date is set, auto-update payment status to paid
+  if (data['accountsDept.paymentDate'] && data['accountsDept.paymentDate'] !== '') {
+    data['accountsDept.status'] = 'paid';
+    console.log('Auto-updated payment status to PAID based on payment date');
+  } else if (!data['accountsDept.status']) {
+    // Default payment status is unpaid
+    data['accountsDept.status'] = 'unpaid';
+  }
+
   return data;
 };
 
-// Update importBillsFromExcel function
-export const importBillsFromExcel = async (filePath) => {
+// Update importBillsFromExcel function to support better field mapping
+export const importBillsFromExcel = async (filePath, validVendorNos = []) => {
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(filePath);
@@ -560,6 +629,15 @@ export const importBillsFromExcel = async (filePath) => {
     const worksheet = workbook.getWorksheet(1);
     if (!worksheet) {
       throw new Error("No worksheet found in the Excel file");
+    }
+    
+    // Log vendor validation status
+    console.log(`Vendor validation enabled: ${validVendorNos.length > 0}`);
+    console.log(`Valid vendor numbers available: ${validVendorNos.length}`);
+    if (validVendorNos.length > 0) {
+      console.log(`First few valid vendor numbers: ${validVendorNos.slice(0, 5).join(', ')}${validVendorNos.length > 5 ? '...' : ''}`);
+    } else {
+      console.log('WARNING: No valid vendor numbers provided, vendor validation will be skipped');
     }
     
     // Get headers from the second row (first row might be column numbers)
@@ -574,15 +652,60 @@ export const importBillsFromExcel = async (filePath) => {
     
     // Get headers
     const headers = [];
+    const headerPositions = {}; // Store position of each header for context-based mapping
+    
     worksheet.getRow(headerRowIndex).eachCell({ includeEmpty: false }, (cell, colNumber) => {
       const headerText = cell.value?.toString().trim();
       headers[colNumber - 1] = headerText;
+      headerPositions[headerText] = colNumber - 1;
       console.log(`Column ${colNumber}: "${headerText}"`);
     });
     
+    // Prepare for context-based mapping
+    // Create a map from column position to the field it should map to based on surrounding columns
+    const positionToFieldMap = {};
+    
+    // Identify "Name of QS" fields based on their preceding headers
+    for (const [contextHeader, config] of Object.entries(contextBasedMapping)) {
+      if (headerPositions[contextHeader] !== undefined) {
+        const contextPosition = headerPositions[contextHeader];
+        // Find the next field (usually right after the context field)
+        const nextPosition = contextPosition + 1;
+        if (headers[nextPosition] === config.nextField) {
+          positionToFieldMap[nextPosition] = config.mapping;
+          console.log(`Mapped contextual field ${headers[nextPosition]} at position ${nextPosition} to ${config.mapping}`);
+        }
+      }
+    }
+    
     // Process data rows
-    const results = [];
+    const toInsert = [];
+    const toUpdate = [];
+    const existingSrNos = [];
+    const nonExistentVendors = [];
     const startRowIndex = headerRowIndex + 1;
+    
+    // First, collect all sr numbers to check against DB
+    const srNosInExcel = [];
+    for (let rowNumber = startRowIndex; rowNumber <= worksheet.rowCount; rowNumber++) {
+      const row = worksheet.getRow(rowNumber);
+      const srNoCell = row.getCell(1); // Assuming Sr No is in the first column
+      
+      if (srNoCell.value) {
+        srNosInExcel.push(String(srNoCell.value).trim());
+      }
+    }
+    
+    // Query DB to find existing bills with these sr numbers
+    const existingBills = await Bill.find({ srNo: { $in: srNosInExcel } }).lean();
+    const existingBillsBySrNo = {};
+    existingBills.forEach(bill => {
+      existingBillsBySrNo[bill.srNo] = bill;
+      existingSrNos.push(bill.srNo);
+    });
+    
+    console.log(`Found ${existingBills.length} existing bills by Sr No in the database`);
+    console.log(`Using ${validVendorNos.length} valid vendors for validation`);
     
     for (let rowNumber = startRowIndex; rowNumber <= worksheet.rowCount; rowNumber++) {
       const row = worksheet.getRow(rowNumber);
@@ -592,51 +715,103 @@ export const importBillsFromExcel = async (filePath) => {
       if (!row.getCell(1).value) continue;
       
       let isEmpty = true;
+      let srNo = null;
+      let vendorNo = null;
       
-      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         isEmpty = false;
-        const header = headers[colNumber - 1];
+        const columnIndex = colNumber - 1;
+        const header = headers[columnIndex];
         if (!header) return; // Skip cells with no header
         
-        const fieldName = headerMapping[header] || header;
+        // Determine field mapping - first check context-based mapping
+        let fieldName;
+        if (positionToFieldMap[columnIndex]) {
+          fieldName = positionToFieldMap[columnIndex];
+        } else {
+          fieldName = headerMapping[header] || header;
+        }
+        
+        // Skip duplicate Status field mappings (only use the one for the correct context)
+        if (fieldName === "status" && header === "Status" && 
+            columnIndex !== headerPositions["Status"]) {
+          // This is likely the payment status, not the bill status
+          fieldName = "accountsDept.status";
+        }
+        
         let value = cell.value;
+        
+        // Store srNo for lookup
+        if (fieldName === 'srNo') {
+          srNo = String(value || '').trim();
+        }
+        
+        // Store vendorNo for validation
+        if (fieldName === 'vendorNo') {
+          vendorNo = String(value || '').trim();
+          console.log(`Found vendorNo in row ${rowNumber}: "${vendorNo}"`);
+        }
         
         // Handle different cell types
         if (cell.type === ExcelJS.ValueType.Date) {
-          value = cell.value.toISOString().split('T')[0];
+          value = cell.value; // Keep as Date object
         } else if (typeof value === 'object' && value !== null) {
           value = value.text || value.result || value.toString();
         }
         
-        rowData[fieldName] = value;
-        
-        // Special handling for region to preserve original value
-        if (fieldName === 'region' && value) {
-          console.log(`Found raw region in Excel row ${rowNumber}: "${value}"`);
+        // For date fields that might come as strings, parse them properly
+        if (fieldName && fieldName.toLowerCase().includes('date')) {
+          value = parseDate(value);
         }
+        
+        // Don't skip null/empty values - include them in the record
+        rowData[fieldName] = value;
       });
       
-      if (!isEmpty) {
+      if (!isEmpty && srNo) {
         try {
+          // Check if vendor exists - strict validation
+          if (vendorNo && validVendorNos.length > 0) {
+            const isValidVendor = validVendorNos.includes(vendorNo);
+            console.log(`Vendor validation for ${vendorNo}: ${isValidVendor ? 'VALID' : 'INVALID'}`);
+            
+            if (!isValidVendor) {
+              console.log(`Vendor not found: ${vendorNo} in row ${rowNumber} - skipping`);
+              nonExistentVendors.push({ srNo, vendorNo, rowNumber });
+              continue; // Skip this row
+            }
+          } else {
+            console.log(`Row ${rowNumber}: Vendor validation skipped for "${vendorNo}" - no validation list provided`);
+          }
+          
           // Add default fields needed for MongoDB
-          rowData.billDate = rowData.taxInvDate || new Date().toISOString().split('T')[0];
+          rowData.billDate = rowData.taxInvDate || new Date();
           rowData.amount = rowData.taxInvAmt || 0;
           rowData.natureOfWork = rowData.typeOfInv || "Others";
-          rowData.vendor = new mongoose.Types.ObjectId();
+          rowData.vendor = new mongoose.Types.ObjectId(); // Will be replaced for updates
           
           const typedData = convertTypes(rowData);
           const validatedData = validateRequiredFields(typedData);
-          const processedData = unflattenData(validatedData);
           
-          // Process special case fields
-          // Convert Payment status to lowercase for enum validation
-          if (rowData['accountsDept.status']) {
-            rowData['accountsDept.status'] = 
-              rowData['accountsDept.status'].toLowerCase().includes('paid') ? 'paid' : 'unpaid';
+          console.log(`Processed row ${rowNumber}: srNo=${srNo}, vendorNo=${vendorNo}`);
+          
+          // Check if this is an update or new insert
+          if (existingSrNos.includes(Number(srNo))) {
+            const existingBill = existingBillsBySrNo[Number(srNo)];
+            console.log(`Found existing bill for Sr No ${srNo}`);
+            
+            // Merge data - don't overwrite non-null DB values with null Excel values
+            const mergedData = mergeWithExisting(existingBill, validatedData);
+            toUpdate.push({ 
+              _id: existingBill._id, 
+              data: unflattenData(mergedData) 
+            });
+          } else {
+            // New insert - only if vendor validation was not enabled or passed
+            const unflattened = unflattenData(validatedData);
+            toInsert.push(unflattened);
+            console.log(`Prepared for insertion: srNo=${srNo}, vendorNo=${vendorNo}`);
           }
-          
-          console.log(`Processed Excel row ${rowNumber}:`, JSON.stringify(processedData).substring(0, 200) + '...');
-          results.push(processedData);
         } catch (error) {
           console.error(`Error processing row ${rowNumber}:`, error);
           throw new Error(`Row ${rowNumber}: ${error.message}`);
@@ -644,14 +819,61 @@ export const importBillsFromExcel = async (filePath) => {
       }
     }
     
-    console.log(`Processing ${results.length} Excel rows`);
-    const inserted = await Bill.insertMany(results);
-    return inserted;
+    // Process inserts and updates
+    console.log(`Processing ${toInsert.length} inserts and ${toUpdate.length} updates`);
+    
+    // Handle inserts
+    let inserted = [];
+    if (toInsert.length > 0) {
+      inserted = await Bill.insertMany(toInsert);
+      console.log(`Successfully inserted ${inserted.length} new bills`);
+    }
+    
+    // Handle updates
+    const updated = [];
+    for (const item of toUpdate) {
+      const result = await Bill.findByIdAndUpdate(
+        item._id,
+        { $set: item.data },
+        { new: true }
+      );
+      if (result) updated.push(result);
+    }
+    console.log(`Successfully updated ${updated.length} existing bills`);
+    
+    return {
+      inserted,
+      updated,
+      nonExistentVendors,
+      totalProcessed: inserted.length + updated.length,
+      totalSkipped: nonExistentVendors.length
+    };
     
   } catch (error) {
     console.error('Excel import error:', error);
     throw error;
   }
+};
+
+// Improved helper function to merge data without overwriting non-null DB values with null Excel values
+const mergeWithExisting = (existingData, newData) => {
+  const result = { ...existingData };
+  
+  // Flatten existing data for easier comparison
+  const flatExisting = flattenDoc(existingData);
+  
+  // Only update fields that have values in the new data
+  Object.keys(newData).forEach(key => {
+    // Don't overwrite existing non-null values with null/empty Excel values
+    if (newData[key] !== null && newData[key] !== undefined && newData[key] !== '') {
+      result[key] = newData[key];
+    } else if (flatExisting[key] === undefined) {
+      // If field doesn't exist in DB but is null in Excel, add it to maintain field existence
+      result[key] = null;
+    }
+  });
+  
+  return result;
 };
 
 // Helper: create a temporary file path
