@@ -26,7 +26,7 @@ app.use(cors({
 import billRoute from "./routes/bill-route.js";
 import userRoute from "./routes/user-route.js";
 import vendorRoute from "./routes/vendor-route.js";
-
+import statRoute from "./routes/stat-routes.js";
 import reportRoute from "./routes/report-route.js";
 import authRoute from "./routes/auth-route.js";
 
@@ -34,7 +34,7 @@ app.use('/auth', authRoute);
 app.use('/bill', billRoute);
 app.use('/users', userRoute);
 app.use('/vendors', vendorRoute);
-
+app.use('/stats', statRoute);
 app.use('/report',reportRoute);
 
 

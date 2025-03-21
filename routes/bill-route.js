@@ -7,8 +7,8 @@ router.use(authenticate);
 
 
 router.post('/', authorize('admin', 'site_officer'), billController.createBill);
-// router.get('/', billController.getAllBills);
-// router.get('/:id', billController.getBillById);
+router.get('/', billController.getBills);
+router.get('/:id', billController.getBill);
 router.put('/:id', authorize('admin', 'site_officer'), billController.updateBill);
 router.delete('/:id', authorize('admin'), billController.deleteBill);
 
