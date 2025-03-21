@@ -5,11 +5,22 @@ import {
 } from "../utils/bill-helper.js";
 import WorkflowTransition from '../models/workflow-transition-model.js';
 
+const getFinancialYearPrefix = (date) => {
+  const d = date || new Date();
+  let currentYear = d.getFullYear().toString().substr(-2);
+
+  if (d.getMonth() >= 3) { 
+    return `${currentYear}${parseInt(currentYear) + 1}`;
+  } else {
+    return `${parseInt(currentYear) - 1}${currentYear}`;
+  }
+};
+
 const createBill = async (req, res) => {
   try {
     // Create a base object with all fields initialized to null or empty objects
     const defaultBill = {
-      srNo: null,
+      // srNo will be automatically generated in the pre-save hook
       srNoOld: null,
       typeOfInv: req.body.typeOfInv,
       workflowState: {
@@ -200,6 +211,25 @@ const updateBill = async (req, res) => {
     // Create a merged object that preserves existing values when not in request body
     const updatedData = {};
     
+    // Check if bill date is being changed, which may require regenerating the srNo
+    let regenerateSerialNumber = false;
+    if (req.body.billDate && existingBill.billDate) {
+      const oldDate = new Date(existingBill.billDate);
+      const newDate = new Date(req.body.billDate);
+      
+      // Get financial year prefixes for old and new dates
+      const oldPrefix = getFinancialYearPrefix(oldDate);
+      const newPrefix = getFinancialYearPrefix(newDate);
+      
+      // If financial year has changed, we need to regenerate the serial number
+      if (oldPrefix !== newPrefix) {
+        console.log(`[Update] Financial year changed from ${oldPrefix} to ${newPrefix}, will regenerate srNo`);
+        regenerateSerialNumber = true;
+        // Set flag for pre-save hook to regenerate srNo
+        existingBill._forceSerialNumberGeneration = true;
+      }
+    }
+    
     // Get all fields from the bill schema
     const schemaFields = Object.keys(Bill.schema.paths);
     
@@ -207,6 +237,11 @@ const updateBill = async (req, res) => {
     schemaFields.forEach(field => {
       // Skip _id, createdAt, updatedAt, __v fields
       if (['_id', 'createdAt', 'updatedAt', '__v'].includes(field)) {
+        return;
+      }
+      
+      // Skip srNo if it needs to be regenerated
+      if (field === 'srNo' && regenerateSerialNumber) {
         return;
       }
       
@@ -306,6 +341,28 @@ const patchBill = async (req, res) => {
     // Process QS-related fields and organize them properly
     organizeQSFields(req.body);
     
+    // Check if bill date is being changed, which may require regenerating the srNo
+    let regenerateSerialNumber = false;
+    if (req.body.billDate && existingBill.billDate) {
+      const oldDate = new Date(existingBill.billDate);
+      const newDate = new Date(req.body.billDate);
+      
+      // Get financial year prefixes for old and new dates
+      const oldPrefix = getFinancialYearPrefix(oldDate);
+      const newPrefix = getFinancialYearPrefix(newDate);
+      
+      // If financial year has changed, we need to regenerate the serial number
+      if (oldPrefix !== newPrefix) {
+        console.log(`[Patch] Financial year changed from ${oldPrefix} to ${newPrefix}, will regenerate srNo`);
+        regenerateSerialNumber = true;
+        // Set flag for pre-save hook to regenerate srNo
+        existingBill._forceSerialNumberGeneration = true;
+        
+        // Store old serial number in srNoOld
+        existingBill.srNoOld = existingBill.srNo;
+      }
+    }
+    
     // Create an object to hold the updates, only including fields that are in the request
     const updates = {};
     
@@ -322,6 +379,9 @@ const patchBill = async (req, res) => {
       
       // Ignore _id and metadata fields
       if (['_id', 'createdAt', 'updatedAt', '__v'].includes(field)) return;
+      
+      // Skip srNo if it needs to be regenerated
+      if (field === 'srNo' && regenerateSerialNumber) return;
       
       // If it's a normal field in the schema
       if (schemaFields.includes(field)) {
@@ -997,6 +1057,98 @@ export const updateWorkflowState = async (req, res) => {
   }
 };
 
+// Method to regenerate serial numbers for all bills
+export const regenerateAllSerialNumbers = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: "Only administrators can perform this operation"
+      });
+    }
+
+    const bills = await Bill.find({}).sort({ createdAt: 1 });
+    
+    console.log(`[Regenerate] Found ${bills.length} bills to process`);
+    
+    // Group bills by financial year
+    const billsByFY = {};
+    
+    // Group each bill by financial year
+    bills.forEach(bill => {
+      if (!bill.billDate) {
+        console.log(`[Regenerate] Skipping bill ${bill._id} - no bill date`);
+        return;
+      }
+      
+      const fyPrefix = getFinancialYearPrefix(new Date(bill.billDate));
+      
+      if (!billsByFY[fyPrefix]) {
+        billsByFY[fyPrefix] = [];
+      }
+      
+      billsByFY[fyPrefix].push(bill);
+    });
+    
+    console.log(`[Regenerate] Bills grouped by financial years: ${Object.keys(billsByFY).join(', ')}`);
+    
+    // Process each financial year group
+    const results = {};
+    const errors = [];
+    
+    for (const [fyPrefix, fyBills] of Object.entries(billsByFY)) {
+      results[fyPrefix] = {
+        totalBills: fyBills.length,
+        processedBills: 0,
+        errorCount: 0
+      };
+      
+      // Sort bills by date within each FY
+      fyBills.sort((a, b) => new Date(a.billDate) - new Date(b.billDate));
+      
+      // Assign new serial numbers in sequence
+      for (let i = 0; i < fyBills.length; i++) {
+        const bill = fyBills[i];
+        
+        try {
+          // Store old serial number
+          bill.srNoOld = bill.srNo || null;
+          
+          // Create new serial number
+          const serialNumber = i + 1;
+          const serialFormatted = serialNumber.toString().padStart(4, '0');
+          bill.srNo = `${fyPrefix}${serialFormatted}`;
+          
+          // Save bill
+          await bill.save();
+          results[fyPrefix].processedBills++;
+          
+          console.log(`[Regenerate] Updated bill ${bill._id}: ${bill.srNoOld || 'null'} → ${bill.srNo}`);
+        } catch (error) {
+          console.error(`[Regenerate] Error updating bill ${bill._id}:`, error);
+          errors.push({ id: bill._id, error: error.message });
+          results[fyPrefix].errorCount++;
+        }
+      }
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: "Serial number regeneration complete",
+      results,
+      errors: errors.length > 0 ? errors : null
+    });
+    
+  } catch (error) {
+    console.error('[Regenerate] Error regenerating serial numbers:', error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to regenerate serial numbers",
+      error: error.message
+    });
+  }
+};
+
 export default {
   createBill,
   getBill,
@@ -1013,6 +1165,7 @@ export default {
   updateWorkflowState,
   recoverRejectedBill,
   patchBill,
+  regenerateAllSerialNumbers
 };
 
 //helper functions ignore for now

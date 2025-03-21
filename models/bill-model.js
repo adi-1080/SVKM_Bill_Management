@@ -2,7 +2,11 @@ import mongoose from "mongoose";
 
 //redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema({
-    srNo: { type: Number, auto: true },
+    srNo: { 
+        type: String, 
+        required: true,
+        unique: true
+    },
     srNoOld: { type: Number, auto: true },
     typeOfInv: { 
         type: String, 
@@ -283,8 +287,48 @@ const billSchema = new mongoose.Schema({
   { timestamps: true }
 );
 
+// Function to get financial year prefix
+const getFinancialYearPrefix = (date) => {
+  const d = date || new Date();
+  let currentYear = d.getFullYear().toString().substr(-2);
+
+  if (d.getMonth() >= 3) { 
+    return `${currentYear}${parseInt(currentYear) + 1}`;
+  } else {
+    return `${parseInt(currentYear) - 1}${currentYear}`;
+  }
+};
+
 // Pre-save hook to handle workflow state changes and other validations
-billSchema.pre('save', function(next) {
+billSchema.pre('save', async function(next) {
+  // If this is a new document (being created for the first time) and srNo is not set
+  if (this.isNew && (!this.srNo || this._forceSerialNumberGeneration)) {
+    try {
+      const fyPrefix = getFinancialYearPrefix(this.billDate);
+      
+      const highestSerialBill = await this.constructor.findOne(
+        { srNo: { $regex: `^${fyPrefix}` } },
+        { srNo: 1 },
+        { sort: { srNo: -1 } }
+      );
+      
+      let nextSerial = 1; 
+      
+      if (highestSerialBill && highestSerialBill.srNo) {
+        const serialPart = parseInt(highestSerialBill.srNo.substring(4));
+        nextSerial = serialPart + 1;
+      }
+      
+      const serialFormatted = nextSerial.toString().padStart(4, '0');
+
+      this.srNo = `${fyPrefix}${serialFormatted}`;
+      console.log(`[Pre-save] Generated new srNo: ${this.srNo}`);
+    } catch (error) {
+      console.error('[Pre-save] Error generating srNo:', error);
+      return next(error);
+    }
+  }
+  
   // Ensure region is always uppercase for consistency
   if (this.region) {
     const originalRegion = this.region;
