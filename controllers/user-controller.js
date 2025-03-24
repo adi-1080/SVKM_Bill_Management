@@ -11,7 +11,7 @@ const generateToken = (userId) => {
 };
 
 export const registerUser = async (req, res) => {
-    const { name, email, password, contact_no, sap_id, username } = req.body;
+    const { name, email, password, contact_no, sap_id } = req.body;
 
     try {
         const existingUser = await User.findOne({ $or: [{ email }, { username }] });
@@ -28,7 +28,8 @@ export const registerUser = async (req, res) => {
             password: hashedPassword,
             contact_no,
             sap_id,
-            username,
+            department: req.body.department || "Site_Officer", // Provide a default since it's required
+            // username,
         });
 
         await newUser.save();
@@ -41,7 +42,7 @@ export const registerUser = async (req, res) => {
                 _id: newUser._id,
                 name: newUser.name,
                 email: newUser.email,
-                username: newUser.username,
+                // username: newUser.username,
             },
             token,
         });
