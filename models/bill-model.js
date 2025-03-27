@@ -214,7 +214,7 @@ const billSchema = new mongoose.Schema({
         accountsIdentification: { type: String },
         paymentAmt: { type: Number },
         remarksAcctsDept: { type: String },
-        status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
+        status: { type: String, enum: ["paid", "unpaid", "Paid", "Unpaid"], default: "unpaid" }
     },
     billDate: { type: Date, required: true },
     vendor: { 
