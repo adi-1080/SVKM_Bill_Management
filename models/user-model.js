@@ -25,16 +25,19 @@ const userSchema = new mongoose.Schema({
         minlength: 6,
         select: false
     },
+    //one user can have multiple role
     role: {
         type: String,
         enum: ["admin", "site_officer", "site_pimo", "qs_site", "pimo_mumbai", "director", "accounts", "viewer"],
         default: "viewer"
     },
+    //one user can have multiple deptartments
     department: {
         type: String,
         enum: ["Site", "PIMO", "QS", "IT", "Accounts", "Management", "Admin"],
         required: true
     },
+    //one user can have multiple region
     region: {
         type: String,
         enum: [

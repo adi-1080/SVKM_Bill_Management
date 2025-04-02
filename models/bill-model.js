@@ -8,20 +8,20 @@ const billSchema = new mongoose.Schema({
         unique: true
     },
     srNoOld: { type: Number, auto: true },
-    typeOfInv: { 
-        type: String, 
-        required: true,
-        enum: [
-            "Materials",
-            "Credit note",
-            "Advance/LC/BG",
-            "Others",
-            "Utility Work",
-            "Proforma Invoice",
-            "Hold/Ret Release",
-            "HVAC Work"
-        ]
-    },
+    // typeOfInv: { 
+    //     type: String, 
+    //     required: true,
+    //     enum: [
+    //         "Materials",
+    //         "Credit note",
+    //         "Advance/LC/BG",
+    //         "Others",
+    //         "Utility Work",
+    //         "Proforma Invoice",
+    //         "Hold/Ret Release",
+    //         "HVAC Work"
+    //     ]
+    // },
     // Add workflow state information
     workflowState: {
         currentState: { 
@@ -165,9 +165,10 @@ const billSchema = new mongoose.Schema({
     },
     siteStatus: { type: String, enum: ["accept", "reject"] },
     status: { type: String, enum: ["accept", "reject", "hold", "issue"] },
+    //2 api req-pimo (date given no date recieved), main pimo(both)
     pimoMumbai: { 
         dateGiven: { type: Date },
-        dateReceived: { type: Date },
+        dateReceived: { type: Date }, //not autofill - they will see a tab of bills whose date pimo exists and they can recieve it, tab ka data store - then go to main dashboard
         receivedBy: { type: String },
         dateGivenPIMO: { type: Date },
         namePIMO: { type: String },
@@ -198,6 +199,7 @@ const billSchema = new mongoose.Schema({
         },
         remarksPimoMumbai: { type: String }
     },
+    // same logic as pimo mumbai, 2 apis - one for date given and one for date received
     accountsDept: {
         dateGiven: { type: Date },
         givenBy: { type: String },
