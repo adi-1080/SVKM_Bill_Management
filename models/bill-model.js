@@ -323,11 +323,16 @@ billSchema.pre('save', async function(next) {
         nextSerial = serialPart + 1;
       }
       
-      // Format with 5 digits instead of 4
+      // Format with 5 digits (4 leading zeros for single digit numbers)
       const serialFormatted = nextSerial.toString().padStart(5, '0');
 
       this.srNo = `${fyPrefix}${serialFormatted}`;
       console.log(`[Pre-save] Generated new srNo: ${this.srNo}`);
+      
+      // Ensure import mode is DISABLED for normal bill creation
+      if (this._importMode === undefined) {
+        this._importMode = false;
+      }
     } catch (error) {
       console.error('[Pre-save] Error generating srNo:', error);
       return next(error);
@@ -339,8 +344,9 @@ billSchema.pre('save', async function(next) {
     this.excelSrNo = this.srNo;
   }
   
-  // Format the srNo as 2425XXXXX for imported bills
-  if (this.srNo && this._importMode) {
+  // Format the srNo for imported bills
+  // Explicitly check that import mode is true (boolean) before applying import formatting
+  if (this.srNo && this._importMode === true) {
     // Extract numeric part if srNo is not already numeric
     let numericPart;
     if (typeof this.srNo === 'string') {
@@ -349,8 +355,11 @@ billSchema.pre('save', async function(next) {
       numericPart = String(this.srNo);
     }
     
-    // Format with 2425 prefix and padded to ensure at least 5 digits
-    this.srNo = `2425${numericPart.padStart(5, '0')}`;
+    // Get the current financial year prefix
+    const fyPrefix = getFinancialYearPrefix(this.billDate);
+    
+    // Format with financial year prefix and padded to ensure at least 5 digits
+    this.srNo = `${fyPrefix}${numericPart.padStart(5, '0')}`;
     console.log(`[Pre-save] Formatted imported srNo: ${this.srNo}`);
   }
   
@@ -659,9 +668,11 @@ billSchema.methods.updateRoleSpecificFields = function(actor, comments, state, a
   }
 };
 
-// Add a method to set import mode
+// Improve setImportMode method
 billSchema.methods.setImportMode = function(isImport) {
-    this._importMode = isImport;
+    // Explicitly convert to boolean to prevent any "truthy" values from causing issues
+    this._importMode = isImport === true;
+    console.log(`[Bill] Import mode ${this._importMode ? 'enabled' : 'disabled'}`);
 };
 
 const Bill = mongoose.model('Bill', billSchema);

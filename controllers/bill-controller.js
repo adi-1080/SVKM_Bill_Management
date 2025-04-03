@@ -38,7 +38,7 @@ const createBill = async (req, res) => {
       nextSerial = serialPart + 1;
     }
     
-    const serialFormatted = nextSerial.toString().padStart(4, '0');
+    const serialFormatted = nextSerial.toString().padStart(5, '0');
     const newSrNo = `${fyPrefix}${serialFormatted}`;
     console.log(`[Create] Generated new srNo: ${newSrNo}`);
     
@@ -200,7 +200,7 @@ const createBill = async (req, res) => {
       }
     });
     // Set import mode to avoid mongoose validation errors for non-required fields
-    bill.setImportMode(true);
+    // bill.setImportMode(true);
     
     
     await bill.save();
