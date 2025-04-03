@@ -1088,8 +1088,10 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
             // Only add to insert list if patchOnly is false
             // New insert - only if vendor validation was not enabled or passed
             const unflattened = unflattenData(validatedData);
+            // Set import mode flag to trigger proper srNo handling in pre-save hook
+            unflattened._importMode = true;
             toInsert.push(unflattened);
-            console.log(`Prepared for insertion: srNo=${srNo}, vendorName=${vendorName}`);
+            console.log(`Prepared for insertion: srNo=${rowData.srNo} (original=${rowData.excelSrNo}), vendorName=${vendorName}`);
           } else {
             console.log(`Skipping srNo=${srNo} - patchOnly mode and bill does not exist`);
             nonExistentVendors.push({ srNo, vendorNo, vendorName, rowNumber, reason: 'Bill does not exist in patchOnly mode' });
@@ -1109,16 +1111,30 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
     if (toInsert.length > 0) {
       try {
         // Set import mode to avoid validation errors
-        inserted = await Bill.insertMany(toInsert.map(bill => {
-          // Ensure returnedToPimo is properly set or null
-          if (bill.accountsDept && typeof bill.accountsDept.returnedToPimo === 'string') {
-            bill.accountsDept.returnedToPimo = null;
+        const billsToInsert = toInsert.map(bill => {
+          // Ensure import mode flag is set for proper srNo formatting
+          bill._importMode = true;
+          
+          // Additional check for srNo formatting
+          if (!bill.excelSrNo && bill.srNo) {
+            bill.excelSrNo = bill.srNo;
           }
+          
+          // Make sure srNo has the correct format
+          if (bill.srNo && !bill.srNo.toString().startsWith('2425')) {
+            // Extract numeric part
+            const numericPart = String(bill.srNo).replace(/\D/g, '');
+            bill.srNo = `2425${numericPart.padStart(5, '0')}`;
+          }
+          
+          // ...existing code...
           return bill;
-        }), { 
+        });
+        
+        inserted = await Bill.insertMany(billsToInsert, { 
           validateBeforeSave: false // Skip mongoose validation
         });
-        console.log(`Successfully inserted ${inserted.length} new bills`);
+        console.log(`Successfully inserted ${inserted.length} new bills with formatted srNo`);
       } catch (insertError) {
         console.error('Error during bill insertion:', insertError);
         throw insertError;

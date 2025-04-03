@@ -163,8 +163,7 @@ const billSchema = new mongoose.Schema({
         name: { type: String },
         dateGiven: { type: Date }
     },
-    siteStatus: { type: String, enum: ["accept", "reject"] },
-    status: { type: String, enum: ["accept", "reject", "hold", "issue"] },
+    siteStatus: { type: String, enum: ["accept", "reject", "hold", "issue"] },
     //2 api req-pimo (date given no date recieved), main pimo(both)
     pimoMumbai: { 
         dateGiven: { type: Date },
@@ -216,7 +215,7 @@ const billSchema = new mongoose.Schema({
         accountsIdentification: { type: String },
         paymentAmt: { type: Number },
         remarksAcctsDept: { type: String },
-        status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
+        status: { type: String, enum: ["paid", "unpaid","Paid","Unpaid"], default: "unpaid" }
     },
     billDate: { type: Date, required: true },
     vendor: { 
@@ -263,6 +262,7 @@ const billSchema = new mongoose.Schema({
         "Direct FI Entry",
         "Advance/LC/BG",
         "Petty cash",
+        "Petty Cash",
         "Imports",
         "Materials",
         "Equipments",
@@ -332,6 +332,26 @@ billSchema.pre('save', async function(next) {
       console.error('[Pre-save] Error generating srNo:', error);
       return next(error);
     }
+  }
+  
+  // Store the original srNo as excelSrNo if it hasn't been set yet
+  if (this.srNo && !this.excelSrNo) {
+    this.excelSrNo = this.srNo;
+  }
+  
+  // Format the srNo as 2425XXXXX for imported bills
+  if (this.srNo && this._importMode) {
+    // Extract numeric part if srNo is not already numeric
+    let numericPart;
+    if (typeof this.srNo === 'string') {
+      numericPart = this.srNo.replace(/\D/g, '');
+    } else {
+      numericPart = String(this.srNo);
+    }
+    
+    // Format with 2425 prefix and padded to ensure at least 5 digits
+    this.srNo = `2425${numericPart.padStart(5, '0')}`;
+    console.log(`[Pre-save] Formatted imported srNo: ${this.srNo}`);
   }
   
   // Ensure region is always uppercase for consistency

@@ -204,7 +204,9 @@ PRIVATE LIMITED"`,
 ];
 
 const distinctVendorNames = [...new Set(vendorNames)]; // compute distinct names
-
+// const highestVendor = await VendorMaster.findOne().sort({ vendorNo: -1 });
+// let startId = highestVendor ? highestVendor.vendorNo + 1 : 1;
+    
 // Map each distinct vendor name to a vendor object with defaults for other fields
 const vendors = distinctVendorNames.map((name, idx) => ({
   vendorNo: idx + 1,
@@ -219,7 +221,7 @@ const vendors = distinctVendorNames.map((name, idx) => ({
 
 async function seedVendors() {
   try {
-    await mongoose.connect("mongodb+srv://adityagupta5277:kvixFMX3Ctl46i4i@cluster0.jxetv.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0");
+    await mongoose.connect("mongodb+srv://monilmehta5:Pass123@paytmcohort.xjxam.mongodb.net/test");
     await VendorMaster.insertMany(vendors);
     console.log("Vendors added successfully.");
   } catch (err) {
