@@ -21,9 +21,30 @@ const getFinancialYearPrefix = (date) => {
 const createBill = async (req, res) => {
   try {
     // Create a base object with all fields initialized to null or empty objects
+    const fyPrefix = getFinancialYearPrefix(new Date(req.body.billDate));
+    console.log(`[Create] Creating new bill with FY prefix: ${fyPrefix}`);
+    
+    // Find the highest serial number for this financial year
+    const highestSerialBill = await Bill.findOne(
+      { srNo: { $regex: `^${fyPrefix}` } },
+      { srNo: 1 },
+      { sort: { srNo: -1 } }
+    );
+      
+    let nextSerial = 1; 
+    
+    if (highestSerialBill && highestSerialBill.srNo) {
+      const serialPart = parseInt(highestSerialBill.srNo.substring(4));
+      nextSerial = serialPart + 1;
+    }
+    
+    const serialFormatted = nextSerial.toString().padStart(4, '0');
+    const newSrNo = `${fyPrefix}${serialFormatted}`;
+    console.log(`[Create] Generated new srNo: ${newSrNo}`);
+    
     const defaultBill = {
       // srNo will be automatically generated in the pre-save hook
-      srNoOld: null,
+      srNo: newSrNo,
       typeOfInv: req.body.typeOfInv,
       workflowState: {
         currentState: "Site_Officer",
@@ -168,11 +189,19 @@ const createBill = async (req, res) => {
       natureOfWork: req.body.natureOfWork
     };
 
-    // Create the bill with all fields initialized
-    const bill = new Bill(defaultBill);
-    
+    // Create the bill with all fields initialized and with srNo already set
+    const bill = new Bill({
+      ...req.body,
+      srNo: newSrNo,
+      workflowState: {
+        currentState: "Site_Officer",
+        history: [],
+        lastUpdated: new Date()
+      }
+    });
     // Set import mode to avoid mongoose validation errors for non-required fields
     bill.setImportMode(true);
+    
     
     await bill.save();
     res.status(201).json(bill);
@@ -1119,8 +1148,9 @@ export const regenerateAllSerialNumbers = async (req, res) => {
           // Create new serial number
           const serialNumber = i + 1;
           const serialFormatted = serialNumber.toString().padStart(4, '0');
+          bill.srNo = `${fyPrefix}${serialFormatted}`;g().padStart(5, '0');
           bill.srNo = `${fyPrefix}${serialFormatted}`;
-          
+          // Save bill
           // Save bill
           await bill.save();
           results[fyPrefix].processedBills++;

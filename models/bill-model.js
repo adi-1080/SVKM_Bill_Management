@@ -306,7 +306,7 @@ const getFinancialYearPrefix = (date) => {
 // Pre-save hook to handle workflow state changes and other validations
 billSchema.pre('save', async function(next) {
   // If this is a new document (being created for the first time) and srNo is not set
-  if (this.isNew && (!this.srNo || this._forceSerialNumberGeneration)) {
+  if ((this.isNew || this._forceSerialNumberGeneration) && !this.srNo) {
     try {
       const fyPrefix = getFinancialYearPrefix(this.billDate);
       
@@ -323,7 +323,8 @@ billSchema.pre('save', async function(next) {
         nextSerial = serialPart + 1;
       }
       
-      const serialFormatted = nextSerial.toString().padStart(4, '0');
+      // Format with 5 digits instead of 4
+      const serialFormatted = nextSerial.toString().padStart(5, '0');
 
       this.srNo = `${fyPrefix}${serialFormatted}`;
       console.log(`[Pre-save] Generated new srNo: ${this.srNo}`);
