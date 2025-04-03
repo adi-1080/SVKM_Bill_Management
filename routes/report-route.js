@@ -1,48 +1,73 @@
-import express from "express";
-import reportController from "../controllers/report-controller.js";
-
+import express from 'express';
 const router = express.Router();
+import { authenticate, authorize } from "../middleware/middleware.js";
+import { 
+  getOutstandingBillsReport,
+  getInvoicesReceivedAtSite,
+  getInvoicesCourierToMumbai,
+  getInvoicesReceivedAtMumbai
+} from '../controllers/report-controller.js';
+
+// Authentication middleware for all routes
+router.use(authenticate);
 
 /**
- * @swagger
- * /report:
- *   post:
- *     summary: Generate a report (Excel or PDF)
- *     description: Accepts an array of Bill IDs and returns a generated Excel or PDF report.
- *     tags:
- *       - Report
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               billIds:
- *                 type: array
- *                 description: Array of Bill IDs
- *                 items:
- *                   type: string
- *               format:
- *                 type: string
- *                 enum: [excel, pdf]
- *           example:
- *             billIds: ["67b6264e872b7f187953c6e4", "67b6266d872b7f187953c6e7"]
- *             format: "excel"
- *     responses:
- *       200:
- *         description: Report file returned as binary data.
- *       400:
- *         description: Invalid request or missing parameters.
- *       500:
- *         description: Internal server error.
+ * @route GET /api/reports/outstanding-bills
+ * @desc Get outstanding bills report (invoices received but not paid)
+ * @access Private (Accounts department only)
  */
-router.post("/generate-report", reportController.generateReport);
+router.get('/outstanding-bills', authorize('accounts'), getOutstandingBillsReport);
 
-// Import bills from file route
-router.post("/import-report", reportController.importBills);
+/**
+ * @route GET /api/reports/invoices-received-at-site
+ * @desc Get report of invoices received at site but not yet sent to Mumbai
+ * @access Private (Site officer, Site PIMO, and QS site roles only)
+ */
+router.get('/invoices-received-at-site', 
+  authorize('site_officer'), 
+  getInvoicesReceivedAtSite
+);
 
-// New route for patching bills through Excel uploads
-router.post("/patch-bills", reportController.patchBillsFromExcel);
+// Add additional routes for other roles to access the same endpoint
+router.get('/invoices-received-at-site-pimo', 
+  authorize('site_pimo'), 
+  getInvoicesReceivedAtSite
+);
+
+router.get('/invoices-received-at-site-qs', 
+  authorize('qs_site'), 
+  getInvoicesReceivedAtSite
+);
+
+/**
+ * @route GET /api/reports/invoices-courier-to-mumbai
+ * @desc Get report of invoices couriered from site to Mumbai
+ * @access Private (Site officer, Site PIMO, and QS site roles only)
+ */
+router.get('/invoices-courier-to-mumbai', 
+  authorize('site_officer'), 
+  getInvoicesCourierToMumbai
+);
+
+// Add additional routes for other roles to access the same endpoint
+router.get('/invoices-courier-to-mumbai-pimo', 
+  authorize('site_pimo'), 
+  getInvoicesCourierToMumbai
+);
+
+router.get('/invoices-courier-to-mumbai-qs', 
+  authorize('qs_site'), 
+  getInvoicesCourierToMumbai
+);
+
+/**
+ * @route GET /api/reports/invoices-received-at-mumbai
+ * @desc Get report of invoices received at Mumbai but not yet sent to accounts department
+ * @access Private (PIMO Mumbai roles only)
+ */
+router.get('/invoices-received-at-mumbai', 
+  authorize('pimo_mumbai'), 
+  getInvoicesReceivedAtMumbai
+);
 
 export default router;

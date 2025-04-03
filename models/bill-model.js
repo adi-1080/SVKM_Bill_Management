@@ -163,8 +163,7 @@ const billSchema = new mongoose.Schema({
         name: { type: String },
         dateGiven: { type: Date }
     },
-    siteStatus: { type: String, enum: ["accept", "reject"] },
-    status: { type: String, enum: ["accept", "reject", "hold", "issue"] },
+    siteStatus: { type: String, enum: ["accept", "reject", "hold", "issue"] },
     //2 api req-pimo (date given no date recieved), main pimo(both)
     pimoMumbai: { 
         dateGiven: { type: Date },
@@ -216,7 +215,7 @@ const billSchema = new mongoose.Schema({
         accountsIdentification: { type: String },
         paymentAmt: { type: Number },
         remarksAcctsDept: { type: String },
-        status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" }
+        status: { type: String, enum: ["paid", "unpaid","Paid","Unpaid"], default: "unpaid" }
     },
     billDate: { type: Date, required: true },
     vendor: { 
@@ -263,6 +262,7 @@ const billSchema = new mongoose.Schema({
         "Direct FI Entry",
         "Advance/LC/BG",
         "Petty cash",
+        "Petty Cash",
         "Imports",
         "Materials",
         "Equipments",
@@ -306,7 +306,7 @@ const getFinancialYearPrefix = (date) => {
 // Pre-save hook to handle workflow state changes and other validations
 billSchema.pre('save', async function(next) {
   // If this is a new document (being created for the first time) and srNo is not set
-  if (this.isNew && (!this.srNo || this._forceSerialNumberGeneration)) {
+  if ((this.isNew || this._forceSerialNumberGeneration) && !this.srNo) {
     try {
       const fyPrefix = getFinancialYearPrefix(this.billDate);
       
@@ -323,14 +323,44 @@ billSchema.pre('save', async function(next) {
         nextSerial = serialPart + 1;
       }
       
-      const serialFormatted = nextSerial.toString().padStart(4, '0');
+      // Format with 5 digits (4 leading zeros for single digit numbers)
+      const serialFormatted = nextSerial.toString().padStart(5, '0');
 
       this.srNo = `${fyPrefix}${serialFormatted}`;
       console.log(`[Pre-save] Generated new srNo: ${this.srNo}`);
+      
+      // Ensure import mode is DISABLED for normal bill creation
+      if (this._importMode === undefined) {
+        this._importMode = false;
+      }
     } catch (error) {
       console.error('[Pre-save] Error generating srNo:', error);
       return next(error);
     }
+  }
+  
+  // Store the original srNo as excelSrNo if it hasn't been set yet
+  if (this.srNo && !this.excelSrNo) {
+    this.excelSrNo = this.srNo;
+  }
+  
+  // Format the srNo for imported bills
+  // Explicitly check that import mode is true (boolean) before applying import formatting
+  if (this.srNo && this._importMode === true) {
+    // Extract numeric part if srNo is not already numeric
+    let numericPart;
+    if (typeof this.srNo === 'string') {
+      numericPart = this.srNo.replace(/\D/g, '');
+    } else {
+      numericPart = String(this.srNo);
+    }
+    
+    // Get the current financial year prefix
+    const fyPrefix = getFinancialYearPrefix(this.billDate);
+    
+    // Format with financial year prefix and padded to ensure at least 5 digits
+    this.srNo = `${fyPrefix}${numericPart.padStart(5, '0')}`;
+    console.log(`[Pre-save] Formatted imported srNo: ${this.srNo}`);
   }
   
   // Ensure region is always uppercase for consistency
@@ -638,9 +668,11 @@ billSchema.methods.updateRoleSpecificFields = function(actor, comments, state, a
   }
 };
 
-// Add a method to set import mode
+// Improve setImportMode method
 billSchema.methods.setImportMode = function(isImport) {
-    this._importMode = isImport;
+    // Explicitly convert to boolean to prevent any "truthy" values from causing issues
+    this._importMode = isImport === true;
+    console.log(`[Bill] Import mode ${this._importMode ? 'enabled' : 'disabled'}`);
 };
 
 const Bill = mongoose.model('Bill', billSchema);
