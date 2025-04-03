@@ -168,10 +168,10 @@ export const parseDate = (dateString) => {
           date.getDate() === dayInt && 
           date.getMonth() === monthInt && 
           date.getFullYear() === yearInt) {
-        console.log(`Parsed date from DD-MM-YYYY format: ${strDate} → ${date.toISOString().split('T')[0]}`);
+        //console.log(`Parsed date from DD-MM-YYYY format: ${strDate} → ${date.toISOString().split('T')[0]}`);
         return date;
       } else {
-        console.log(`Failed to create valid date from DD-MM-YYYY parts: ${day}, ${month}, ${year}`);
+        //console.log(`Failed to create valid date from DD-MM-YYYY parts: ${day}, ${month}, ${year}`);
       }
     }
     
@@ -191,7 +191,7 @@ export const parseDate = (dateString) => {
           date.getDate() === dayInt && 
           date.getMonth() === monthInt && 
           date.getFullYear() === yearInt) {
-        console.log(`Parsed date from DD/MM/YYYY format: ${strDate} → ${date.toISOString().split('T')[0]}`);
+        //console.log(`Parsed date from DD/MM/YYYY format: ${strDate} → ${date.toISOString().split('T')[0]}`);
         return date;
       }
     }
@@ -217,13 +217,13 @@ export const parseDate = (dateString) => {
         
         const manualDate = new Date(adjustedYear, month, day);
         if (!isNaN(manualDate.getTime())) {
-          console.log(`Manually parsed date: ${strDate} → ${manualDate.toISOString().split('T')[0]}`);
+          //console.log(`Manually parsed date: ${strDate} → ${manualDate.toISOString().split('T')[0]}`);
           return manualDate;
         }
       }
     }
     
-    console.log(`Failed to parse date: ${strDate}`);
+    //console.log(`Failed to parse date: ${strDate}`);
     return null;
   } catch (error) {
     console.error(`Error parsing date '${dateString}':`, error);
@@ -390,7 +390,7 @@ const convertTypes = (data) => {
         try {
           // Special handling for the problematic returnedToPimo field
           if (dateField === 'returnedToPimo') {
-            console.log(`Processing accountsDept.returnedToPimo with value: "${result.accountsDept[dateField]}"`);
+            //console.log(`Processing accountsDept.returnedToPimo with value: "${result.accountsDept[dateField]}"`);
             
             // Try direct parsing first
             let parsedDate = parseDate(result.accountsDept[dateField]);
@@ -402,13 +402,13 @@ const convertTypes = (data) => {
                 const [day, month, year] = dateParts;
                 parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
                 if (!isNaN(parsedDate.getTime())) {
-                  console.log(`Manually parsed accountsDept.returnedToPimo: ${result.accountsDept[dateField]} → ${parsedDate.toISOString().split('T')[0]}`);
+                  //console.log(`Manually parsed accountsDept.returnedToPimo: ${result.accountsDept[dateField]} → ${parsedDate.toISOString().split('T')[0]}`);
                 }
               }
             }
             
             result.accountsDept[dateField] = parsedDate;
-            console.log(`Final accountsDept.returnedToPimo value:`, result.accountsDept[dateField]);
+            //console.log(`Final accountsDept.returnedToPimo value:`, result.accountsDept[dateField]);
           } else {
             // Normal parsing for other date fields
             result.accountsDept[dateField] = parseDate(result.accountsDept[dateField]);
@@ -488,7 +488,7 @@ export const importBillsFromCSV = async (filePath, validVendorNos = []) => {
     
     // Get headers from the second line (skip the numbering row)
     const headers = rows[1].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-    console.log('CSV Headers:', headers);
+    //console.log('CSV Headers:', headers);
     
     // Process data rows
     const toInsert = [];
@@ -521,7 +521,7 @@ export const importBillsFromCSV = async (filePath, validVendorNos = []) => {
       const srNo = rowData.srNo;
       
       if (vendorNo && validVendorNos.length > 0 && !validVendorNos.includes(vendorNo)) {
-        console.log(`Vendor not found: ${vendorNo} in row ${i} - skipping`);
+        //console.log(`Vendor not found: ${vendorNo} in row ${i} - skipping`);
         nonExistentVendors.push({ srNo, vendorNo, rowNumber: i });
         continue; // Skip this row
       }
@@ -537,7 +537,7 @@ export const importBillsFromCSV = async (filePath, validVendorNos = []) => {
       const validatedData = validateRequiredFields(typedData);
       const processedData = unflattenData(validatedData);
       
-      console.log(`Processed row ${i}:`, processedData);
+      //console.log(`Processed row ${i}:`, processedData);
       toInsert.push(processedData);
     }
     
@@ -768,7 +768,7 @@ const validateRequiredFields = (data) => {
   // ADD THIS NEW SINGLE REGION VALIDATION LOGIC
   // This should be the only region validation block in the function
   if (data.region) {
-    console.log(`Region before mapping: "${data.region}"`);
+    //console.log(`Region before mapping: "${data.region}"`);
     
     const validRegions = [
       "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR",
@@ -795,13 +795,13 @@ const validateRequiredFields = (data) => {
     const normalizedInput = data.region.trim().toLowerCase();
     if (directMappings[normalizedInput]) {
       data.region = directMappings[normalizedInput];
-      console.log(`Direct region mapping: "${normalizedInput}" → "${data.region}"`);
+      //console.log(`Direct region mapping: "${normalizedInput}" → "${data.region}"`);
     } else {
       // Try exact case-insensitive match with validRegions
       const exactMatch = validRegions.find(r => r.toLowerCase() === normalizedInput);
       if (exactMatch) {
         data.region = exactMatch;
-        console.log(`Exact region match: "${normalizedInput}" → "${data.region}"`);
+        //console.log(`Exact region match: "${normalizedInput}" → "${data.region}"`);
       } else {
         // Try partial matches as fallback
         const partialMatches = validRegions.filter(r => 
@@ -811,21 +811,21 @@ const validateRequiredFields = (data) => {
         
         if (partialMatches.length > 0) {
           data.region = partialMatches[0];
-          console.log(`Partial region match: "${normalizedInput}" → "${data.region}"`);
+          //console.log(`Partial region match: "${normalizedInput}" → "${data.region}"`);
         } else {
-          console.log(`No region match for "${normalizedInput}", defaulting to MUMBAI`);
+          //console.log(`No region match for "${normalizedInput}", defaulting to MUMBAI`);
           data.region = "MUMBAI"; // Default if no match
         }
       }
     }
     
-    console.log(`Final region value: "${data.region}"`);
+    //console.log(`Final region value: "${data.region}"`);
   }
 
   // If payment date is set, auto-update payment status to paid
   if (data['accountsDept.paymentDate'] && data['accountsDept.paymentDate'] !== '') {
     data['accountsDept.status'] = 'paid';
-    console.log('Auto-updated payment status to PAID based on payment date');
+    //console.log('Auto-updated payment status to PAID based on payment date');
   } else if (!data['accountsDept.status']) {
     // Default payment status is unpaid
     data['accountsDept.status'] = 'unpaid';
@@ -846,12 +846,12 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
     }
     
     // Log vendor validation status - we'll validate by vendor name instead of number
-    console.log(`Vendor validation enabled: ${validVendorNos.length > 0}`);
-    console.log(`Valid vendor numbers available: ${validVendorNos.length}`);
+    //console.log(`Vendor validation enabled: ${validVendorNos.length > 0}`);
+    //console.log(`Valid vendor numbers available: ${validVendorNos.length}`);
     if (validVendorNos.length > 0) {
-      console.log(`First few valid vendor numbers: ${validVendorNos.slice(0, 5).join(', ')}${validVendorNos.length > 5 ? '...' : ''}`);
+      //console.log(`First few valid vendor numbers: ${validVendorNos.slice(0, 5).join(', ')}${validVendorNos.length > 5 ? '...' : ''}`);
     } else {
-      console.log('WARNING: No valid vendor numbers provided, vendor validation will be skipped');
+      //console.log('WARNING: No valid vendor numbers provided, vendor validation will be skipped');
     }
     
     // Get headers from the second row (first row might be column numbers)
@@ -872,7 +872,7 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
       const headerText = cell.value?.toString().trim();
       headers[colNumber - 1] = headerText;
       headerPositions[headerText] = colNumber - 1;
-      console.log(`Column ${colNumber}: "${headerText}"`);
+      //console.log(`Column ${colNumber}: "${headerText}"`);
     });
     
     // Prepare for context-based mapping
@@ -887,7 +887,7 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
         const nextPosition = contextPosition + 1;
         if (headers[nextPosition] === config.nextField) {
           positionToFieldMap[nextPosition] = config.mapping;
-          console.log(`Mapped contextual field ${headers[nextPosition]} at position ${nextPosition} to ${config.mapping}`);
+          //console.log(`Mapped contextual field ${headers[nextPosition]} at position ${nextPosition} to ${config.mapping}`);
         }
       }
     }
@@ -918,8 +918,8 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
       existingSrNos.push(bill.srNo);
     });
     
-    console.log(`Found ${existingBills.length} existing bills by Sr No in the database`);
-    console.log(`Using ${validVendorNos.length} valid vendors for validation`);
+    //console.log(`Found ${existingBills.length} existing bills by Sr No in the database`);
+    //console.log(`Using ${validVendorNos.length} valid vendors for validation`);
     
     for (let rowNumber = startRowIndex; rowNumber <= worksheet.rowCount; rowNumber++) {
       const row = worksheet.getRow(rowNumber);
@@ -964,13 +964,13 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
         // Store vendorNo for reference
         if (fieldName === 'vendorNo') {
           vendorNo = String(value || '').trim();
-          console.log(`Found vendorNo in row ${rowNumber}: "${vendorNo}"`);
+          //console.log(`Found vendorNo in row ${rowNumber}: "${vendorNo}"`);
         }
         
         // Store vendorName for validation
         if (fieldName === 'vendorName') {
           vendorName = String(value || '').trim();
-          console.log(`Found vendorName in row ${rowNumber}: "${vendorName}"`);
+          //console.log(`Found vendorName in row ${rowNumber}: "${vendorName}"`);
         }
         
         // Handle different cell types
@@ -991,6 +991,14 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
       
       if (!isEmpty && srNo) {
         try {
+          // Store Excel serial number as srNoOld and create new srNo with incremented year
+          if (srNo) {
+            rowData.srNoOld = srNo;
+            rowData.excelSrNo = srNo;
+            rowData.srNo = convertExcelSrNo(srNo);
+            //console.log(`Converted srNo: Original=${srNo}, New=${rowData.srNo}`);
+          }
+          
           // MODIFIED: Check if vendor name exists instead of vendor number
           // We'll skip validation if vendorName is missing or if no list is provided
           if (vendorName && validVendorNos.length > 0) {
@@ -1001,15 +1009,15 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
               validVendor.toLowerCase().includes(vendorName.toLowerCase())
             );
             
-            console.log(`Vendor name validation for "${vendorName}": ${isValidVendor ? 'VALID' : 'INVALID'}`);
+            //console.log(`Vendor name validation for "${vendorName}": ${isValidVendor ? 'VALID' : 'INVALID'}`);
             
             if (!isValidVendor) {
-              console.log(`Vendor name not found: "${vendorName}" in row ${rowNumber} - skipping`);
+              //console.log(`Vendor name not found: "${vendorName}" in row ${rowNumber} - skipping`);
               nonExistentVendors.push({ srNo, vendorNo, vendorName, rowNumber });
               continue; // Skip this row
             }
           } else {
-            console.log(`Row ${rowNumber}: Vendor validation skipped for "${vendorName}" - no validation list or name missing`);
+            //console.log(`Row ${rowNumber}: Vendor validation skipped for "${vendorName}" - no validation list or name missing`);
           }
           
           // Add default fields needed for MongoDB
@@ -1022,7 +1030,7 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
           if (rowData.accountsDept && rowData.accountsDept.returnedToPimo) {
             if (typeof rowData.accountsDept.returnedToPimo === 'string') {
               try {
-                console.log(`Pre-processing accountsDept.returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
+                //console.log(`Pre-processing accountsDept.returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
                 
                 // Parse the date from string format DD-MM-YYYY
                 const dateParts = rowData.accountsDept.returnedToPimo.split('-');
@@ -1036,13 +1044,13 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
                   
                   if (!isNaN(parsedDate.getTime())) {
                     rowData.accountsDept.returnedToPimo = parsedDate;
-                    console.log(`Successfully pre-processed returnedToPimo: ${parsedDate}`);
+                    //console.log(`Successfully pre-processed returnedToPimo: ${parsedDate}`);
                   } else {
-                    console.log(`Failed to parse returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
+                    //console.log(`Failed to parse returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
                     rowData.accountsDept.returnedToPimo = null;
                   }
                 } else {
-                  console.log(`Invalid date format for returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
+                  //console.log(`Invalid date format for returnedToPimo: ${rowData.accountsDept.returnedToPimo}`);
                   rowData.accountsDept.returnedToPimo = null;
                 }
               } catch (error) {
@@ -1065,18 +1073,18 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
             dateFields.forEach(field => {
               if (validatedData.accountsDept[field] && 
                   typeof validatedData.accountsDept[field] === 'string') {
-                console.log(`Converting accountsDept.${field} from string to Date`);
+                //console.log(`Converting accountsDept.${field} from string to Date`);
                 validatedData.accountsDept[field] = null; // Safer to set to null than keep as string
               }
             });
           }
           
-          console.log(`Processed row ${rowNumber}: srNo=${srNo}, vendorName=${vendorName}`);
+          //console.log(`Processed row ${rowNumber}: srNo=${srNo}, vendorName=${vendorName}`);
           
           // Check if this is an update or new insert
           if (existingSrNos.includes(Number(srNo))) {
             const existingBill = existingBillsBySrNo[Number(srNo)];
-            console.log(`Found existing bill for Sr No ${srNo}`);
+            //console.log(`Found existing bill for Sr No ${srNo}`);
             
             // Merge data - don't overwrite non-null DB values with null Excel values
             const mergedData = mergeWithExisting(existingBill, validatedData);
@@ -1088,12 +1096,10 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
             // Only add to insert list if patchOnly is false
             // New insert - only if vendor validation was not enabled or passed
             const unflattened = unflattenData(validatedData);
-            // Set import mode flag to trigger proper srNo handling in pre-save hook
-            unflattened._importMode = true;
             toInsert.push(unflattened);
-            console.log(`Prepared for insertion: srNo=${rowData.srNo} (original=${rowData.excelSrNo}), vendorName=${vendorName}`);
+            //console.log(`Prepared for insertion: srNo=${srNo}, vendorName=${vendorName}`);
           } else {
-            console.log(`Skipping srNo=${srNo} - patchOnly mode and bill does not exist`);
+            //console.log(`Skipping srNo=${srNo} - patchOnly mode and bill does not exist`);
             nonExistentVendors.push({ srNo, vendorNo, vendorName, rowNumber, reason: 'Bill does not exist in patchOnly mode' });
           }
         } catch (error) {
@@ -1104,37 +1110,23 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
     }
     
     // Process inserts and updates
-    console.log(`Processing ${toInsert.length} inserts and ${toUpdate.length} updates`);
+    //console.log(`Processing ${toInsert.length} inserts and ${toUpdate.length} updates`);
     
     // Handle inserts
     let inserted = [];
     if (toInsert.length > 0) {
       try {
         // Set import mode to avoid validation errors
-        const billsToInsert = toInsert.map(bill => {
-          // Ensure import mode flag is set for proper srNo formatting
-          bill._importMode = true;
-          
-          // Additional check for srNo formatting
-          if (!bill.excelSrNo && bill.srNo) {
-            bill.excelSrNo = bill.srNo;
+        inserted = await Bill.insertMany(toInsert.map(bill => {
+          // Ensure returnedToPimo is properly set or null
+          if (bill.accountsDept && typeof bill.accountsDept.returnedToPimo === 'string') {
+            bill.accountsDept.returnedToPimo = null;
           }
-          
-          // Make sure srNo has the correct format
-          if (bill.srNo && !bill.srNo.toString().startsWith('2425')) {
-            // Extract numeric part
-            const numericPart = String(bill.srNo).replace(/\D/g, '');
-            bill.srNo = `2425${numericPart.padStart(5, '0')}`;
-          }
-          
-          // ...existing code...
           return bill;
-        });
-        
-        inserted = await Bill.insertMany(billsToInsert, { 
+        }), { 
           validateBeforeSave: false // Skip mongoose validation
         });
-        console.log(`Successfully inserted ${inserted.length} new bills with formatted srNo`);
+        //console.log(`Successfully inserted ${inserted.length} new bills`);
       } catch (insertError) {
         console.error('Error during bill insertion:', insertError);
         throw insertError;
@@ -1166,7 +1158,7 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
         // Continue with other updates
       }
     }
-    console.log(`Successfully updated ${updated.length} existing bills`);
+    //console.log(`Successfully updated ${updated.length} existing bills`);
     
     return {
       inserted,
@@ -1220,7 +1212,7 @@ const mergeWithExisting = (existingData, newData) => {
           
         if (isPlaceholderGST && hasValidExistingGST) {
           // Keep the existing valid GST number instead of overwriting with placeholder
-          console.log(`Preserving existing GST number: ${existingValue} instead of using placeholder: ${newValue}`);
+          //console.log(`Preserving existing GST number: ${existingValue} instead of using placeholder: ${newValue}`);
           return; // Skip this update
         }
       }
@@ -1270,3 +1262,33 @@ export const createTempFilePath = (prefix, extension) => {
   return path.join(tempDir, fileName);
 };
 
+// Helper: convert Excel serial number to new format with full financial year
+export const convertExcelSrNo = (excelSrNo) => {
+  console.log(`convertExcelSrNo - Input value: "${excelSrNo}"`);
+  
+  if (!excelSrNo) return null;
+  
+  const srNoStr = String(excelSrNo).trim();
+  console.log(`convertExcelSrNo - Converted to string: "${srNoStr}"`);
+  
+  if (srNoStr.length < 3) return srNoStr;
+  
+  // Extract the year part (first two digits)
+  const yearPart = srNoStr.substring(0, 2);
+  const restPart = srNoStr.substring(2);
+  console.log(`convertExcelSrNo - Extracted parts: yearPart="${yearPart}", restPart="${restPart}"`);
+  
+  // Convert year to number and calculate next year
+  const yearNum = parseInt(yearPart, 10);
+  const nextYearNum = yearNum + 1;
+  
+  // Create full financial year (e.g., 2425 for FY 2024-25)
+  const fullFinancialYear = `${yearPart}${nextYearNum < 10 ? '0' + nextYearNum : nextYearNum}`;
+  console.log(`convertExcelSrNo - Full financial year: ${fullFinancialYear}`);
+  
+  // Format new serial number with full financial year
+  const result = `${fullFinancialYear}${restPart}`;
+  console.log(`convertExcelSrNo - Final result: "${result}"`);
+  
+  return result;
+};
