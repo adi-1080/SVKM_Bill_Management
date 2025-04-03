@@ -1,5 +1,7 @@
 import { generateExcelReport, generatePDFReport } from "../utils/report-generator.js";
-import { importBillsFromCSV, importBillsFromExcel, organizeQSFields, flattenDoc } from "../utils/csv-handler.js";
+// Update imports to use the split CSV utility files
+import { importBillsFromCSV, importBillsFromExcel } from "../utils/csv-import.js";
+import { organizeQSFields, flattenDoc, convertExcelSrNo, generateUniqueSerialNumber } from "../utils/csv-patch.js";
 import mongoose from "mongoose";
 import multer from "multer";
 import path from "path";
