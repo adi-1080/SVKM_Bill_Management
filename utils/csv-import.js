@@ -108,6 +108,9 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
     serialNumberTracking.lastNumberUsed = 0;
     serialNumberTracking.usedSerialNumbers.clear();
     
+    // Track items that are skipped because they already exist
+    const alreadyExistingBills = [];
+    
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(filePath);
     
@@ -253,6 +256,119 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
           rowData.srNoOld = srNo;
           rowData.excelSrNo = srNo;
           
+          // First check if this bill already exists in the database with its exact serial number
+          const existingBillWithSameSerialNo = await Bill.findOne({ srNo: srNo }).lean();
+          
+          if (existingBillWithSameSerialNo) {
+            console.log(`Bill with serial number ${srNo} already exists in the database (ID: ${existingBillWithSameSerialNo._id})`);
+            
+            // If we're in patchOnly mode, add to update queue instead of skipping
+            if (patchOnly) {
+              // MODIFIED: Apply vendor name validation before proceeding with update
+              if (vendorName && validVendorNos.length > 0) {
+                const isValidVendor = validVendorNos.some(validVendor => 
+                  vendorName.toLowerCase().includes(validVendor.toLowerCase()) || 
+                  validVendor.toLowerCase().includes(vendorName.toLowerCase())
+                );
+                
+                if (!isValidVendor) {
+                  nonExistentVendors.push({ 
+                    srNo, 
+                    vendorNo, 
+                    vendorName, 
+                    rowNumber,
+                    reason: 'Vendor not found in database'
+                  });
+                  continue; // Skip this row
+                }
+              }
+              
+              // Processing for update when bill exists
+              // Add default fields needed for MongoDB
+              rowData.billDate = rowData.taxInvDate || existingBillWithSameSerialNo.billDate || new Date();
+              rowData.amount = rowData.taxInvAmt || existingBillWithSameSerialNo.amount || 0;
+              rowData.natureOfWork = rowData.typeOfInv || existingBillWithSameSerialNo.natureOfWork || "Others";
+              rowData.vendor = existingBillWithSameSerialNo.vendor; // Keep existing vendor reference
+              
+              // Special handling for accountsDept.returnedToPimo before convertTypes
+              if (rowData.accountsDept && rowData.accountsDept.returnedToPimo) {
+                if (typeof rowData.accountsDept.returnedToPimo === 'string') {
+                  try {
+                    // Parse the date from string format DD-MM-YYYY
+                    const dateParts = rowData.accountsDept.returnedToPimo.split('-');
+                    if (dateParts.length === 3) {
+                      const [day, month, year] = dateParts;
+                      const parsedDate = new Date(
+                        parseInt(year, 10),
+                        parseInt(month, 10) - 1,
+                        parseInt(day, 10)
+                      );
+                      
+                      if (!isNaN(parsedDate.getTime())) {
+                        rowData.accountsDept.returnedToPimo = parsedDate;
+                      } else {
+                        rowData.accountsDept.returnedToPimo = null;
+                      }
+                    } else {
+                      rowData.accountsDept.returnedToPimo = null;
+                    }
+                  } catch (error) {
+                    console.error(`Error processing returnedToPimo: ${error.message}`);
+                    rowData.accountsDept.returnedToPimo = null;
+                  }
+                }
+              }
+              
+              const typedData = convertTypes(rowData);
+              const validatedData = validateRequiredFields(typedData);
+              
+              // Safety checks for date fields
+              if (validatedData.accountsDept) {
+                const dateFields = [
+                  'dateGiven', 'dateReceived', 'returnedToPimo', 'receivedBack', 
+                  'paymentDate'
+                ];
+                
+                dateFields.forEach(field => {
+                  if (validatedData.accountsDept[field] && 
+                      typeof validatedData.accountsDept[field] === 'string') {
+                    validatedData.accountsDept[field] = null;
+                  }
+                });
+              }
+              
+              // Merge data with existing bill data - the mergeWithExisting function 
+              // already implements the "don't overwrite non-null with null" logic
+              const mergedData = mergeWithExisting(existingBillWithSameSerialNo, validatedData);
+              
+              toUpdate.push({ 
+                _id: existingBillWithSameSerialNo._id, 
+                data: unflattenData(mergedData) 
+              });
+              
+              // Track this as an already existing bill that's now queued for update
+              alreadyExistingBills.push({
+                srNo: srNo,
+                _id: existingBillWithSameSerialNo._id,
+                vendorName: vendorName,
+                rowNumber,
+                updating: true
+              });
+              
+              continue; // Skip the rest of this iteration and go to the next row
+            } else {
+              // In normal import mode, just track as existing and skip
+              alreadyExistingBills.push({
+                srNo: srNo,
+                _id: existingBillWithSameSerialNo._id,
+                vendorName: vendorName,
+                rowNumber
+              });
+              continue; // Skip this row
+            }
+          }
+          
+          // For bills that don't already exist...
           // Convert Excel serial number format to get the financial year prefix
           const convertedSrNo = convertExcelSrNo(srNo);
           const prefix = convertedSrNo.substring(0, 4); // Get "2425" part
@@ -405,8 +521,9 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
       inserted,
       updated,
       nonExistentVendors,
+      alreadyExistingBills, // Add this new property to the return object
       totalProcessed: inserted.length + updated.length,
-      totalSkipped: nonExistentVendors.length
+      totalSkipped: nonExistentVendors.length + alreadyExistingBills.length
     };
     
   } catch (error) {

@@ -566,6 +566,12 @@ export const convertExcelSrNo = (excelSrNo) => {
   const srNoStr = String(excelSrNo).trim();
   console.log(`convertExcelSrNo - Converted to string: "${srNoStr}"`);
   
+  // Check if the srNo already has the correct format (starts with 2425)
+  if (srNoStr.startsWith('2425')) {
+    console.log(`convertExcelSrNo - Serial number already has correct format: "${srNoStr}"`);
+    return srNoStr;
+  }
+  
   if (srNoStr.length < 3) return srNoStr;
   
   // Extract the year part (first two digits)

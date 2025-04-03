@@ -352,6 +352,29 @@ const importBills = async (req, res) => {
       });
     }
     
+    // Check for already existing bills
+    if (importResult.alreadyExistingBills && importResult.alreadyExistingBills.length > 0) {
+      return res.status(202).json({
+        success: true,
+        message: "Some bills already exist in the database. Please use the PATCH endpoint instead.",
+        details: {
+          inserted: importResult.inserted?.length || 0,
+          updated: importResult.updated?.length || 0,
+          alreadyExisting: importResult.alreadyExistingBills.length,
+          totalProcessed: importResult.totalProcessed,
+          vendorValidation: skipVendorValidation ? 'skipped' : 'enabled',
+          mode: patchOnly ? 'patch-only' : 'normal'
+        },
+        existingBills: importResult.alreadyExistingBills.map(bill => ({
+          srNo: bill.srNo,
+          _id: bill._id,
+          vendorName: bill.vendorName || 'Unknown',
+          rowNumber: bill.rowNumber
+        })),
+        recommendation: "To update these bills, please use the PATCH endpoint: POST /billdownload/patch-bills"
+      });
+    }
+    
     // Return success response with clearer formatting info
     return res.status(200).json({
       success: true,
@@ -541,16 +564,24 @@ const patchBillsFromExcel = async (req, res) => {
       }
     }
     
+    // UPDATED: Combine already existing bills that were updated into the updated count
+    const updatedCount = importResult.updated.length;
+    const updatedExistingCount = importResult.alreadyExistingBills?.filter(b => b.updating).length || 0;
+    const totalUpdated = updatedCount + updatedExistingCount;
+    
     return res.status(200).json({
       success: true,
-      message: `Successfully patched ${importResult.updated.length} bills`,
+      message: `Successfully patched ${totalUpdated} bills`,
       details: {
-        updated: importResult.updated.length,
+        updated: totalUpdated,
         skipped: importResult.nonExistentVendors.length,
-        total: importResult.totalProcessed
+        total: importResult.totalProcessed + totalUpdated
       },
       data: {
-        updated: importResult.updated.map(bill => ({ _id: bill._id, srNo: bill.srNo })),
+        updated: [
+          ...importResult.updated.map(bill => ({ _id: bill._id, srNo: bill.srNo })),
+          ...importResult.alreadyExistingBills?.filter(b => b.updating).map(bill => ({ _id: bill._id, srNo: bill.srNo })) || []
+        ],
         skipped: importResult.nonExistentVendors
       }
     });
