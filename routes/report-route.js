@@ -5,7 +5,12 @@ import {
   getOutstandingBillsReport,
   getInvoicesReceivedAtSite,
   getInvoicesCourierToMumbai,
-  getInvoicesReceivedAtMumbai
+  getInvoicesReceivedAtMumbai,
+  getInvoicesGivenToAcctsDept,
+  getInvoicesGivenToQsSite,
+  getInvoicesPaid,
+  getPendingBillsReport,
+  getBillJourney
 } from '../controllers/report-controller.js';
 
 // Authentication middleware for all routes
@@ -45,18 +50,7 @@ router.get('/invoices-received-at-site-qs',
  * @access Private (Site officer, Site PIMO, and QS site roles only)
  */
 router.get('/invoices-courier-to-mumbai', 
-  authorize('site_officer'), 
-  getInvoicesCourierToMumbai
-);
-
-// Add additional routes for other roles to access the same endpoint
-router.get('/invoices-courier-to-mumbai-pimo', 
-  authorize('site_pimo'), 
-  getInvoicesCourierToMumbai
-);
-
-router.get('/invoices-courier-to-mumbai-qs', 
-  authorize('qs_site'), 
+  authorize(['site_officer', 'site_pimo', 'qs_site']), 
   getInvoicesCourierToMumbai
 );
 
@@ -68,6 +62,56 @@ router.get('/invoices-courier-to-mumbai-qs',
 router.get('/invoices-received-at-mumbai', 
   authorize('pimo_mumbai'), 
   getInvoicesReceivedAtMumbai
+);
+
+/**
+ * @route GET /api/reports/invoices-given-to-accounts
+ * @desc Get report of invoices received at Mumbai and sent to accounts department
+ * @access Private (PIMO Mumbai and accounts roles only)
+ */
+router.get('/invoices-given-to-accounts', 
+  authorize(['pimo_mumbai', 'accounts']), 
+  getInvoicesGivenToAcctsDept
+);
+
+/**
+ * @route GET /api/reports/invoices-given-to-qs-site
+ * @desc Get report of invoices given to QS site
+ * @access Private (Site PIMO and QS site roles only)
+ */
+router.get('/invoices-given-to-qs-site', 
+  authorize(['site_pimo', 'qs_site']), 
+  getInvoicesGivenToQsSite
+);
+
+/**
+ * @route GET /api/reports/invoices-paid
+ * @desc Get report of invoices that have been paid
+ * @access Private (Accounts department only)
+ */
+router.get('/invoices-paid', 
+  authorize('accounts'), 
+  getInvoicesPaid
+);
+
+/**
+ * @route GET /api/reports/pending-bills
+ * @desc Get report of bills pending with various offices (PIMO/SVKM site office/QS Mumbai office/QS site office)
+ * @access Private (Admin, site_officer, site_pimo, qs_site, pimo_mumbai roles)
+ */
+router.get('/pending-bills', 
+  authorize(['admin', 'site_officer', 'site_pimo', 'qs_site', 'pimo_mumbai']), 
+  getPendingBillsReport
+);
+
+/**
+ * @route GET /api/reports/bill-journey
+ * @desc Get report of bills journey through the processing workflow
+ * @access Private (All authorized users)
+ */
+router.get('/bill-journey', 
+  authorize(['admin', 'site_officer', 'site_pimo', 'qs_site', 'pimo_mumbai', 'director', 'accounts']), 
+  getBillJourney
 );
 
 export default router;
