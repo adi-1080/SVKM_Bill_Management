@@ -4,6 +4,7 @@ import {
   buildDateRangeQuery,
 } from "../utils/bill-helper.js";
 import WorkflowTransition from '../models/workflow-transition-model.js';
+import VendorMaster from "../models/vendor-master-model.js"
 
 const getFinancialYearPrefix = (date) => {
   const d = date || new Date();
@@ -19,6 +20,10 @@ const getFinancialYearPrefix = (date) => {
 };
 
 const createBill = async (req, res) => {
+  const vendorExists = await VendorMaster.findById(req.body.vendor);
+  if(!vendorExists){
+    return res.status(404).json({message:"Vendor not found"});
+  }
   try {
     // Create a base object with all fields initialized to null or empty objects
     const defaultBill = {
@@ -183,7 +188,8 @@ const createBill = async (req, res) => {
 
 const getBills = async (req, res) => {
   try {
-    const bills = await Bill.find();
+    const filter = req.user.role === 'admin' ? {}: {region: req.user.region};
+    const bills = await Bill.find(filter);
     res.status(200).json(bills);
   } catch (error) {
     res.status(400).json({ message: error.message });
