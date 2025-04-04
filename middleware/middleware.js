@@ -83,10 +83,16 @@ export const authenticate = (req, res, next) => {
 };
 
 // Role-based authorization middleware
-export const authorize = (...roles) => {
+export const authorize = (...roleArgs) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    // Handle both array of roles and individual role arguments
+    let roles = roleArgs;
+    if (roleArgs.length === 1 && Array.isArray(roleArgs[0])) {
+      roles = roleArgs[0];
     }
 
     if (!roles.includes(req.user.role) && req.user.role !== 'admin') {
@@ -241,4 +247,4 @@ export const validateStateAccess = (req, res, next) => {
   }
   
   next();
-}; 
+};

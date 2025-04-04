@@ -20,7 +20,9 @@ const getFinancialYearPrefix = (date) => {
 };
 
 const createBill = async (req, res) => {
-  const vendorExists = await VendorMaster.findById(req.body.vendor);
+  console.log("Vendor ID being searched:", req.body.vendorName);
+console.log("Vendor ID type:", req.body.vendor);
+  const vendorExists = await VendorMaster.findOne({vendorName: req.body.vendorName});
   if(!vendorExists){
     return res.status(404).json({message:"Vendor not found"});
   }
