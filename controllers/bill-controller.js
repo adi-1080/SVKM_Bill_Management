@@ -1189,6 +1189,36 @@ export const regenerateAllSerialNumbers = async (req, res) => {
   }
 };
 
+// Change the workflow state of a bill
+export const changeWorkflowState = async (req, res) => {
+    const { id } = req.params;
+    const { newState } = req.body;
+    const bill = await Bill.findById(id);
+    if (!bill) {
+        return res.status(404).json({
+            success: false,
+            message: "Bill not found"
+        });
+    }
+    bill.workflowState.history.push({
+        state: bill.workflowState.currentState,
+        timestamp: new Date(),
+        actor: req.body.actor,
+        comments: req.body.comments,
+        action: req.body.action || "forward"
+    });
+    bill.workflowState.currentState = newState;
+    await bill.save();
+    return res.status(200).json({
+        success: true,
+        message: "Workflow state updated successfully",
+        bill
+    });
+}
+
+  
+
+
 export default {
   createBill,
   getBill,
@@ -1205,7 +1235,8 @@ export default {
   updateWorkflowState,
   recoverRejectedBill,
   patchBill,
-  regenerateAllSerialNumbers
+  regenerateAllSerialNumbers,
+  changeWorkflowState
 };
 
 //helper functions ignore for now

@@ -30,4 +30,7 @@ router.get('/workflow/state/:state', validateStateAccess, billController.getBill
 // Workflow state update
 router.put('/:id/workflow', authenticate, billController.updateWorkflowState);
 
+// Workflow state update 2
+router.patch('/:id/workflow2', authenticate, billController.changeWorkflowState);
+
 export default router; 
