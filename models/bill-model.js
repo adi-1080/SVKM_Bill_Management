@@ -55,23 +55,13 @@ const billSchema = new mongoose.Schema(
                     "Rejected",
                     "Completed",
                 ],
-
                 default: "Site_Officer",
             },
             history: [
                 {
                     state: {
                         type: String,
-                        // enum: [
-                        //     "Site_Officer",
-                        //     "Site_PIMO",
-                        //     "QS_Site",
-                        //     "PIMO_Mumbai",
-                        //     "Directors",
-                        //     "Accounts",
-                        //     "Completed",
-                        //     "Rejected"
-                        // ]
+
                         enum: [
                             "Site_Officer",
                             "Quality_Inspector",
