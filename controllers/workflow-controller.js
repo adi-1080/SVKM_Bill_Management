@@ -6,6 +6,10 @@ import WorkFlowFinal from "../models/workflow-final-model.js";
 export const changeWorkflowState = async (req, res) => {
     try {
         const { fromUser, toUser, billId, action, remarks } = req.body;
+
+        const { id: fromId, name: fromName, role: fromRole } = fromUser;
+        const { id: toId, name: toName, role: toRole } = toUser;
+
         if (!fromUser || !toUser || !billId || !action) {
             return res.status(400).json({
                 success: false,
@@ -19,6 +23,14 @@ export const changeWorkflowState = async (req, res) => {
                 message: "Bill not found",
             });
         }
+
+        if(billFound.siteStatus=="rejected"){
+            return res.status(400).json({
+                success: false,
+                message: "Bill is already rejected",
+            });
+        }
+        
         const lastWorkflow = await WorkFlowFinal.findOne({ billId }).sort({
             createdAt: -1,
         });
@@ -33,6 +45,219 @@ export const changeWorkflowState = async (req, res) => {
             .populate("fromUser", "name role department")
             .populate("toUser", "name role department");
 
+        if (
+            (fromName == "site_officer" ||
+                fromName == "quality_inspector" ||
+                fromName == "quantity_surveyor" ||
+                fromName == "site_architect" ||
+                fromName == "site_incharge" ||
+                fromName == "site_central_officer" ||
+                fromName == "site_pimo") &&
+            (toUser == "quality_inspector" ||
+                toUser == "quantity_surveyor" ||
+                toUser == "site_architect" ||
+                toUser == "site_incharge" ||
+                toUser == "site_pimo")
+        ) {
+            const billWorflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        maxCount: 1,
+                        currentCount: 1,
+                    },
+                },
+                { new: true }
+            );
+        } else if (
+            fromRole === "site_officer" &&
+            toRole === "pimo_mumbai" &&
+            action == "forward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 2,
+                        maxCount: Math.max(billFound.maxCount, 2),
+                    },
+                },
+                { new: true }
+            );
+        } else if (
+            fromRole === "pimo_mumbai" &&
+            toRole === "qs_mumbai" &&
+            action == "forward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 3,
+                        maxCount: Math.max(billFound.maxCount, 3),
+                    },
+                },
+                { new: true }
+            );
+        } // Case 4: qs_mumbai to pimo_mumbai (step 4)
+        else if (
+            fromRole === "qs_mumbai" &&
+            toRole === "pimo_mumbai" &&
+            action == "forward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 4,
+                        maxCount: Math.max(billFound.maxCount, 4),
+                    },
+                },
+                { new: true }
+            );
+        }
+        // Case 5: pimo_mumbai to trustees (step 5)
+        else if (
+            fromRole === "pimo_mumbai" &&
+            toRole === "trustees" &&
+            action == "forward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 5,
+                        maxCount: Math.max(billFound.maxCount, 5),
+                    },
+                },
+                { new: true }
+            );
+        }
+        // Case 6: trustees to pimo_mumbai (step 6)
+        else if (
+            fromRole === "trustees" &&
+            toRole === "pimo_mumbai" &&
+            action == "forward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 6,
+                        maxCount: Math.max(billFound.maxCount, 6),
+                    },
+                },
+                { new: true }
+            );
+        }
+        // Case 7: pimo_mumbai to accounts_department (step 7)
+        else if (
+            fromRole === "pimo_mumbai" &&
+            toRole === "accounts_department" &&
+            action == "forward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 7,
+                        maxCount: Math.max(billFound.maxCount, 7),
+                    },
+                },
+                { new: true }
+            );
+        }
+
+        //reverse
+        else if (
+            fromRole === "pimo_mumbai" &&
+            toRole === "site_incharge" &&
+            action === "backward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 1,
+                    },
+                },
+                { new: true }
+            );
+        } else if (
+            fromRole === "qs_mumbai" &&
+            toRole === "pimo_mumbai" &&
+            action === "backward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 2,
+                    },
+                },
+                { new: true }
+            );
+        } // Case 4: qs_mumbai to pimo_mumbai (step 4)
+        else if (
+            fromRole === "pimo_mumbai" &&
+            toRole === "qs_mumbai" &&
+            action === "backward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 3,
+
+                    },
+                },
+                { new: true }
+            );
+        }
+        // Case 5: pimo_mumbai to trustees (step 5)
+        else if (fromRole === "trustees" && toRole === "pimo_mumbai") {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 4
+                    },
+                },
+                { new: true }
+            );
+        }
+        // Case 6: trustees to pimo_mumbai (step 6)
+        else if (
+            fromRole === "pimo_mumbai" &&
+            toRole === "trutees" &&
+            action === "backward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 5
+                    },
+                },
+                { new: true }
+            );
+        }
+        // Case 7: pimo_mumbai to accounts_department (step 7)
+        else if (
+            fromRole === "accounts_department" &&
+            toRole === "pimo_mumbai" &&
+            action === "backward"
+        ) {
+            const billWorkflow = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        currentCount: 6,
+                    },
+                },
+                { new: true }
+            );
+        }
 
         if (!newWorkflow) {
             return res.status(500).json({
@@ -54,7 +279,6 @@ export const changeWorkflowState = async (req, res) => {
         });
     }
 };
-
 
 export const getWorkflowStats = async (req, res) => {
     try {
@@ -418,4 +642,3 @@ export const getRolePerformanceMetrics = async (req, res) => {
         });
     }
 };
-
