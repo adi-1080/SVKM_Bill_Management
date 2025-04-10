@@ -1,5 +1,12 @@
 import Bill from '../models/bill-model.js';
 
+// helper for calculating eod
+const endOfDay = (dateString) => {
+  const date = new Date(dateString);
+  date.setHours(23,59,59,999);
+  return date;
+}
+
 /**
  * Generate Outstanding Bills Report
  * @param {Object} req - Express request object
@@ -22,7 +29,7 @@ export const getOutstandingBillsReport = async (req, res) => {
     if (startDate && endDate) {
       filter["taxInvDate"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate)
       };
     }
     
