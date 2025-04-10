@@ -95,10 +95,12 @@ const billSchema = new mongoose.Schema(
         projectDescription: { type: String, required: true },
         vendorNo: { type: String, required: true },
         vendorName: { type: String, required: true },
-        gstNumber: { type: String, required: true },
+        gstNumber: { type: String, 
+            // required: true 
+        },
         compliance206AB: {
             type: String,
-            required: true,
+            // required: true,
             enum: [
                 "206AB check on website",
                 "2024-Specified Person U/S 206AB",
@@ -109,7 +111,7 @@ const billSchema = new mongoose.Schema(
         },
         panStatus: {
             type: String,
-            required: true,
+            // required: true,
             enum: ["PAN operative/N.A.", "PAN inoperative"],
         },
         poCreated: { type: String, enum: ["Yes", "No"], required: true },
@@ -124,9 +126,15 @@ const billSchema = new mongoose.Schema(
         taxInvNo: { type: String },
         taxInvDate: { type: Date },
         taxInvAmt: { type: Number },
-        taxInvRecdAtSite: { type: Date },
-        taxInvRecdBy: { type: String },
-        department: { type: String },
+        taxInvRecdAtSite: { type: Date,
+            required: true,
+         },
+        taxInvRecdBy: { type: String,
+            required: true,
+         },
+        department: { type: String,
+            required: true,
+         },
         remarksBySiteTeam: { type: String },
         attachment: { type: String },
         attachmentType: {
@@ -196,6 +204,7 @@ const billSchema = new mongoose.Schema(
         siteStatus: {
             type: String,
             enum: ["accept", "reject", "hold", "issue"],
+            required: true,
         },
         //2 api req-pimo (date given no date recieved), main pimo(both)
         pimoMumbai: {
