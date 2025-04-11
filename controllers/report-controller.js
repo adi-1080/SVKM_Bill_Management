@@ -63,6 +63,8 @@ export const getOutstandingBillsReport = async (req, res) => {
     let index = 1;
     let reportData = [];
     let totalInvoiceAmount = 0;
+    let totalCopAmount = 0;
+    let totalCount = 0;
     
     // Format date strings properly
     const formatDate = (dateValue) => {
@@ -75,6 +77,9 @@ export const getOutstandingBillsReport = async (req, res) => {
     sortedVendorNames.forEach(vendorName => {
       const vendorBills = vendorGroups[vendorName];
       let vendorSubtotal = 0;
+      let vendorCopSubtotal = 0;
+      const billCount = vendorBills.length;
+      totalCount += billCount;
       
       // Sort bills within each vendor group by invoice date
       vendorBills.sort((a, b) => {
@@ -94,8 +99,13 @@ export const getOutstandingBillsReport = async (req, res) => {
       // Add each bill to the vendor group
       vendorBills.forEach(bill => {
         const taxInvAmt = parseFloat(bill.taxInvAmt || bill.accountsDept?.paymentAmt || 0);
+        const copAmt = parseFloat(bill.copDetails?.amount || 0);
+
         vendorSubtotal += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+        vendorCopSubtotal += !isNaN(copAmt) ? copAmt : 0;
+
         totalInvoiceAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+        totalCopAmount += !isNaN(copAmt) ? copAmt : 0;
         
         vendorGroup.bills.push({
           srNo: index++,
@@ -114,6 +124,7 @@ export const getOutstandingBillsReport = async (req, res) => {
       
       // Add the subtotal
       vendorGroup.subtotal = Number(vendorSubtotal.toFixed(2));
+      vendorGroup.subtotalCopAmt = Number(vendorCopSubtotal.toFixed(2));
       
       // Add all bills from this vendor to the report data
       vendorGroup.bills.forEach(bill => reportData.push(bill));
@@ -123,7 +134,9 @@ export const getOutstandingBillsReport = async (req, res) => {
         isSubtotal: true,
         vendorName: vendorName,
         subtotalLabel: `Subtotal for ${vendorName}:`,
-        subtotalAmount: Number(vendorSubtotal.toFixed(2))
+        subtotalAmount: Number(vendorSubtotal.toFixed(2)),
+        subtotalCopAmt: Number(vendorCopSubtotal.toFixed(2)),
+        count: billCount
       });
     });
     
@@ -131,7 +144,9 @@ export const getOutstandingBillsReport = async (req, res) => {
     reportData.push({
       isGrandTotal: true,
       grandTotalLabel: "Grand Total:",
-      grandTotalAmount: Number(totalInvoiceAmount.toFixed(2))
+      grandTotalAmount: Number(totalInvoiceAmount.toFixed(2)),
+      grandTotalCopAmt: Number(totalCopAmount.toFixed(2)),
+      totalCount: totalCount
     });
     
     // Calculate vendor subtotals for summary section
@@ -141,9 +156,14 @@ export const getOutstandingBillsReport = async (req, res) => {
         const amount = parseFloat(bill.taxInvAmt || bill.accountsDept?.paymentAmt || 0);
         return sum + (isNaN(amount) ? 0 : amount);
       }, 0);
+      const totalCopAmount = vendorBills.reduce((sum, bill) => {  // Calculate total COP amount
+        const copAmount = parseFloat(bill.copDetails?.amount || 0);
+        return sum + (isNaN(copAmount) ? 0 : copAmount);
+      }, 0);
       return { 
         vendorName, 
         totalAmount: Number(totalAmount.toFixed(2)),
+        totalCopAmount: Number(totalCopAmount.toFixed(2)),
         count: vendorBills.length
       };
     });
@@ -161,6 +181,7 @@ export const getOutstandingBillsReport = async (req, res) => {
         summary: {
           vendorSubtotals,
           totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2)),
+          totalCopAmount: Number(totalCopAmount.toFixed(2)),
           recordCount: reportData.length - sortedVendorNames.length - 1 // Subtract subtotal and grand total rows
         }
       }
