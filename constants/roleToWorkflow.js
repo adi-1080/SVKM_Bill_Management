@@ -1,0 +1,30 @@
+export const roleMapping = {
+    1: [
+        [
+            "site_officer",
+            "quality_inspector",
+            "quantity_surveyor",
+            "site_architect",
+            "site_engineer",
+            "site_incharge",
+            "site_central_officer",
+            "site_pimo",
+        ],
+        [
+            "site_officer",
+            "quality_inspector",
+            "quantity_surveyor",
+            "site_architect",
+            "site_engineer",
+            "site_incharge",
+            "site_central_officer",
+            "site_pimo",
+        ],
+    ],
+    2: ["site_officer", "pimo_mumbai"],
+    3: ["pimo_mumbai", "qs_mumbai"],
+    4: ["qs_mumbai", "pimo_mumbai"],
+    5: ["pimo_mumbai", "trustees"],
+    6: ["trustees", "pimo_mumbai"],
+    7: ["pimo_mumbai", "accounts_department"],
+};

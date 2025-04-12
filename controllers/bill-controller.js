@@ -4,6 +4,7 @@ import {
   buildDateRangeQuery,
 } from "../utils/bill-helper.js";
 import WorkflowTransition from '../models/workflow-transition-model.js';
+import VendorMaster from "../models/vendor-master-model.js"
 
 const getFinancialYearPrefix = (date) => {
   const d = date || new Date();
@@ -19,11 +20,38 @@ const getFinancialYearPrefix = (date) => {
 };
 
 const createBill = async (req, res) => {
+  console.log("Vendor ID being searched:", req.body.vendorName);
+console.log("Vendor ID type:", req.body.vendor);
+  const vendorExists = await VendorMaster.findOne({vendorName: req.body.vendorName});
+  if(!vendorExists){
+    return res.status(404).json({message:"Vendor not found"});
+  }
   try {
     // Create a base object with all fields initialized to null or empty objects
+    const fyPrefix = getFinancialYearPrefix(new Date(req.body.billDate));
+    console.log(`[Create] Creating new bill with FY prefix: ${fyPrefix}`);
+    
+    // Find the highest serial number for this financial year
+    const highestSerialBill = await Bill.findOne(
+      { srNo: { $regex: `^${fyPrefix}` } },
+      { srNo: 1 },
+      { sort: { srNo: -1 } }
+    );
+      
+    let nextSerial = 1; 
+    
+    if (highestSerialBill && highestSerialBill.srNo) {
+      const serialPart = parseInt(highestSerialBill.srNo.substring(4));
+      nextSerial = serialPart + 1;
+    }
+    
+    const serialFormatted = nextSerial.toString().padStart(5, '0');
+    const newSrNo = `${fyPrefix}${serialFormatted}`;
+    console.log(`[Create] Generated new srNo: ${newSrNo}`);
+    
     const defaultBill = {
       // srNo will be automatically generated in the pre-save hook
-      srNoOld: null,
+      srNo: newSrNo,
       typeOfInv: req.body.typeOfInv,
       workflowState: {
         currentState: "Site_Officer",
@@ -168,11 +196,19 @@ const createBill = async (req, res) => {
       natureOfWork: req.body.natureOfWork
     };
 
-    // Create the bill with all fields initialized
-    const bill = new Bill(defaultBill);
-    
+    // Create the bill with all fields initialized and with srNo already set
+    const bill = new Bill({
+      ...req.body,
+      srNo: newSrNo,
+      workflowState: {
+        currentState: "Site_Officer",
+        history: [],
+        lastUpdated: new Date()
+      }
+    });
     // Set import mode to avoid mongoose validation errors for non-required fields
-    bill.setImportMode(true);
+    // bill.setImportMode(true);
+    
     
     await bill.save();
     res.status(201).json(bill);
@@ -183,7 +219,8 @@ const createBill = async (req, res) => {
 
 const getBills = async (req, res) => {
   try {
-    const bills = await Bill.find();
+    const filter = req.user.role === 'admin' ? {}: {region: req.user.region};
+    const bills = await Bill.find(filter);
     res.status(200).json(bills);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -1119,8 +1156,9 @@ export const regenerateAllSerialNumbers = async (req, res) => {
           // Create new serial number
           const serialNumber = i + 1;
           const serialFormatted = serialNumber.toString().padStart(4, '0');
+          bill.srNo = `${fyPrefix}${serialFormatted}`;g().padStart(5, '0');
           bill.srNo = `${fyPrefix}${serialFormatted}`;
-          
+          // Save bill
           // Save bill
           await bill.save();
           results[fyPrefix].processedBills++;
@@ -1151,6 +1189,36 @@ export const regenerateAllSerialNumbers = async (req, res) => {
   }
 };
 
+// Change the workflow state of a bill
+export const changeWorkflowState = async (req, res) => {
+    const { id } = req.params;
+    const { newState } = req.body;
+    const bill = await Bill.findById(id);
+    if (!bill) {
+        return res.status(404).json({
+            success: false,
+            message: "Bill not found"
+        });
+    }
+    bill.workflowState.history.push({
+        state: bill.workflowState.currentState,
+        timestamp: new Date(),
+        actor: req.body.actor,
+        comments: req.body.comments,
+        action: req.body.action || "forward"
+    });
+    bill.workflowState.currentState = newState;
+    await bill.save();
+    return res.status(200).json({
+        success: true,
+        message: "Workflow state updated successfully",
+        bill
+    });
+}
+
+  
+
+
 export default {
   createBill,
   getBill,
@@ -1167,7 +1235,8 @@ export default {
   updateWorkflowState,
   recoverRejectedBill,
   patchBill,
-  regenerateAllSerialNumbers
+  regenerateAllSerialNumbers,
+  changeWorkflowState
 };
 
 //helper functions ignore for now

@@ -27,8 +27,10 @@ import billRoute from "./routes/bill-route.js";
 import userRoute from "./routes/user-route.js";
 import vendorRoute from "./routes/vendor-route.js";
 import statRoute from "./routes/stat-routes.js";
-import reportRoute from "./routes/report-route.js";
+import reportRoute from "./routes/billdownload-route.js";
 import authRoute from "./routes/auth-route.js";
+import roleRoute from "./routes/role-route.js";
+import reportRoutes from "./routes/report-route.js";
 
 app.use('/auth', authRoute);
 app.use('/bill', billRoute);
@@ -36,6 +38,8 @@ app.use('/users', userRoute);
 app.use('/vendors', vendorRoute);
 app.use('/stats', statRoute);
 app.use('/report',reportRoute);
+app.use('/role', roleRoute);
+app.use('/api/reports', reportRoutes);
 
 
 // Swagger docs route

@@ -1,13 +1,13 @@
 import express from 'express';
 import billController from '../controllers/bill-controller.js';
-import { authenticate, authorize, validateWorkflowTransition, validateStateAccess } from '../middleware/middleware.js';
+import { authenticate, authorize, validateWorkflowTransition, validateStateAccess, authMiddleware } from '../middleware/middleware.js';
 
 const router = express.Router();
 router.use(authenticate);
 
 
 router.post('/', authorize('admin', 'site_officer'), billController.createBill);
-router.get('/', billController.getBills);
+router.get('/', authMiddleware, billController.getBills);
 router.get('/:id', billController.getBill);
 router.put('/:id', authorize('admin', 'site_officer'), billController.updateBill);
 router.delete('/:id', authorize('admin'), billController.deleteBill);
@@ -29,5 +29,8 @@ router.get('/workflow/state/:state', validateStateAccess, billController.getBill
 
 // Workflow state update
 router.put('/:id/workflow', authenticate, billController.updateWorkflowState);
+
+// Workflow state update 2
+router.patch('/:id/workflow2', authenticate, billController.changeWorkflowState);
 
 export default router; 

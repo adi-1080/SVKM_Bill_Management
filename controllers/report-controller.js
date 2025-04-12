@@ -1,552 +1,1120 @@
-import { generateExcelReport, generatePDFReport } from "../utils/report-generator.js";
-import { importBillsFromCSV, importBillsFromExcel, organizeQSFields, flattenDoc } from "../utils/csv-handler.js";
-import mongoose from "mongoose";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import os from "os";
-import ExcelJS from "exceljs";
+import Bill from '../models/bill-model.js';
 
-// Define a schema for VendorMaster if not already defined
-const vendorMasterSchema = new mongoose.Schema({
-  vendorNo: { type: String, required: true },
-  vendorName: { type: String, required: true }
-}, { collection: 'vendorMasters' });
-
-// Try to load VendorMaster model dynamically
-let VendorMaster;
-try {
-  VendorMaster = mongoose.model('VendorMaster'); 
-} catch (e) {
-  try {
-    // If model doesn't exist, register it
-    VendorMaster = mongoose.model('VendorMaster', vendorMasterSchema);
-    console.log('VendorMaster model registered');
-  } catch (registerError) {
-    console.log('Failed to register VendorMaster model:', registerError);
-  }
+// helper for calculating eod
+const endOfDay = (dateString) => {
+  const date = new Date(dateString);
+  date.setHours(23,59,59,999);
+  return date;
 }
 
-// Helper function to check if vendor validation should be skipped
-const shouldSkipVendorValidation = async () => {
+/**
+ * Generate Outstanding Bills Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getOutstandingBillsReport = async (req, res) => {
   try {
-    if (!VendorMaster) return true;
+    // Parse query parameters for filtering
+    const { startDate, endDate, vendor } = req.query;
     
-    const count = await VendorMaster.countDocuments();
-    console.log(`Found ${count} vendors in database`);
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Bills that have been received by the accounting department
+      "accountsDept.dateReceived": { $ne: null, $exists: true },
+      // But have not been paid yet - field based on actual schema
+      "accountsDept.paymentDate": { $eq: null }
+    };
     
-    // If empty vendor table, skip validation
-    return count === 0;
-  } catch (error) {
-    console.error('Error checking vendor count:', error);
-    return true; // Skip validation on error
-  }
-};
-
-const generateReport = async (req, res) => {
-  try {
-    const { billIds, format = 'excel' } = req.body;
-    
-    // Normalize billIds input
-    const ids = Array.isArray(billIds) ? billIds : billIds.split(',').map(id => id.trim());
-    
-    // Validate IDs
-    if (!ids.length) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "No bill IDs provided" 
-      });
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["taxInvDate"] = { 
+        $gte: new Date(startDate), 
+        $lte: endOfDay(endDate)
+      };
     }
-
-    const invalidIds = ids.filter(id => !mongoose.Types.ObjectId.isValid(id));
-    if (invalidIds.length) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid bill ID format",
-        invalidIds 
-      });
+    
+    // Add vendor filter if provided
+    if (vendor) {
+      filter["vendorName"] = vendor;
     }
-
-    // Generate report based on format
-    let fileBuffer, fileName, contentType;
-    const timestamp = new Date().toISOString().split('T')[0];
-
-    switch (format.toLowerCase()) {
-      case 'pdf':
-        fileBuffer = await generatePDFReport(ids);
-        fileName = `bills-report-${timestamp}.pdf`;
-        contentType = "application/pdf";
-        break;
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch outstanding bills from database
+    const outstandingBills = await Bill.find(filter).sort({ "vendorName": 1, "taxInvDate": 1 });
+    
+    console.log(`Found ${outstandingBills.length} outstanding bills`);
+    
+    // Group bills by vendor name
+    const vendorGroups = {};
+    
+    outstandingBills.forEach(bill => {
+      const vendorName = bill.vendorName;
+      if (!vendorGroups[vendorName]) {
+        vendorGroups[vendorName] = [];
+      }
+      vendorGroups[vendorName].push(bill);
+    });
+    
+    // Sort vendor names alphabetically
+    const sortedVendorNames = Object.keys(vendorGroups).sort();
+    
+    // Create the report data with grouped and sorted vendors
+    let index = 1;
+    let reportData = [];
+    let totalInvoiceAmount = 0;
+    let totalCopAmount = 0;
+    let totalCount = 0;
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    sortedVendorNames.forEach(vendorName => {
+      const vendorBills = vendorGroups[vendorName];
+      let vendorSubtotal = 0;
+      let vendorCopSubtotal = 0;
+      const billCount = vendorBills.length;
+      totalCount += billCount;
       
-      case 'csv':
-        fileBuffer = await exportBillsToCSV(ids);
-        fileName = `bills-report-${timestamp}.csv`;
-        contentType = "text/csv";
-        break;
+      // Sort bills within each vendor group by invoice date
+      vendorBills.sort((a, b) => {
+        if (a.taxInvDate && b.taxInvDate) {
+          return new Date(a.taxInvDate) - new Date(b.taxInvDate);
+        }
+        return 0;
+      });
+      
+      // Add vendor group object that will contain all vendor bills and subtotal
+      const vendorGroup = {
+        vendorName: vendorName,
+        bills: [],
+        subtotal: 0
+      };
+      
+      // Add each bill to the vendor group
+      vendorBills.forEach(bill => {
+        const taxInvAmt = parseFloat(bill.taxInvAmt || bill.accountsDept?.paymentAmt || 0);
+        const copAmt = parseFloat(bill.copDetails?.amount || 0);
+
+        vendorSubtotal += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+        vendorCopSubtotal += !isNaN(copAmt) ? copAmt : 0;
+
+        totalInvoiceAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+        totalCopAmount += !isNaN(copAmt) ? copAmt : 0;
         
-      case 'excel':
-      default:
-        fileBuffer = await generateExcelReport(ids);
-        fileName = `bills-report-${timestamp}.xlsx`;
-        contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        break;
-    }
-
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    res.setHeader("Content-Length", fileBuffer.length);
-    return res.send(fileBuffer);
-
+        vendorGroup.bills.push({
+          srNo: index++,
+          region: bill.region || "N/A",
+          vendorNo: bill.vendorNo || "N/A",
+          vendorName: bill.vendorName || "N/A",
+          taxInvNo: bill.taxInvNo || "N/A",
+          taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+          taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+          copAmt: !isNaN(parseFloat(bill.copDetails?.amount)) ? 
+            Number(parseFloat(bill.copDetails.amount).toFixed(2)) : 0,
+          dateRecdInAcctsDept: formatDate(bill.accountsDept?.dateReceived) || "N/A",
+          natureOfWorkSupply: bill.natureOfWork || "N/A"
+        });
+      });
+      
+      // Add the subtotal
+      vendorGroup.subtotal = Number(vendorSubtotal.toFixed(2));
+      vendorGroup.subtotalCopAmt = Number(vendorCopSubtotal.toFixed(2));
+      
+      // Add all bills from this vendor to the report data
+      vendorGroup.bills.forEach(bill => reportData.push(bill));
+      
+      // Add subtotal row after each vendor's bills
+      reportData.push({
+        isSubtotal: true,
+        vendorName: vendorName,
+        subtotalLabel: `Subtotal for ${vendorName}:`,
+        subtotalAmount: Number(vendorSubtotal.toFixed(2)),
+        subtotalCopAmt: Number(vendorCopSubtotal.toFixed(2)),
+        count: billCount
+      });
+    });
+    
+    // Add grand total row
+    reportData.push({
+      isGrandTotal: true,
+      grandTotalLabel: "Grand Total:",
+      grandTotalAmount: Number(totalInvoiceAmount.toFixed(2)),
+      grandTotalCopAmt: Number(totalCopAmount.toFixed(2)),
+      totalCount: totalCount
+    });
+    
+    // Calculate vendor subtotals for summary section
+    const vendorSubtotals = sortedVendorNames.map(vendorName => {
+      const vendorBills = vendorGroups[vendorName];
+      const totalAmount = vendorBills.reduce((sum, bill) => {
+        const amount = parseFloat(bill.taxInvAmt || bill.accountsDept?.paymentAmt || 0);
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
+      const totalCopAmount = vendorBills.reduce((sum, bill) => {  // Calculate total COP amount
+        const copAmount = parseFloat(bill.copDetails?.amount || 0);
+        return sum + (isNaN(copAmount) ? 0 : copAmount);
+      }, 0);
+      return { 
+        vendorName, 
+        totalAmount: Number(totalAmount.toFixed(2)),
+        totalCopAmount: Number(totalCopAmount.toFixed(2)),
+        count: vendorBills.length
+      };
+    });
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Outstanding Bills Report",
+        generatedAt: new Date().toISOString(),
+        filterCriteria: {
+          logic: "date inv recd in accts dept is filled and date of payment is empty",
+          sorting: ["vendorName", "invoiceDate"]
+        },
+        data: reportData,
+        summary: {
+          vendorSubtotals,
+          totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2)),
+          totalCopAmount: Number(totalCopAmount.toFixed(2)),
+          recordCount: reportData.length - sortedVendorNames.length - 1 // Subtract subtotal and grand total rows
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
   } catch (error) {
-    console.error('Report generation error:', error);
+    console.error('Error generating outstanding bills report:', error);
     return res.status(500).json({ 
       success: false, 
-      message: "Failed to generate report",
+      message: 'Error generating report', 
       error: error.message 
     });
   }
 };
 
-const storage = multer.memoryStorage();
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    // Define allowed file types
-    const validExcelMimeTypes = [
-      'application/vnd.ms-excel',                                          // .xls
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-      'application/vnd.oasis.opendocument.spreadsheet',                    // .ods
-      'text/csv'                                                           // .csv
-    ];
-    
-    const validExtensions = /xlsx|xls|csv|ods/i;
-    const extname = validExtensions.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = validExcelMimeTypes.includes(file.mimetype);
-
-    console.log('File details:', {
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      extname: path.extname(file.originalname).toLowerCase()
-    });
-    
-    if (extname || mimetype) {
-      return cb(null, true);
-    }
-    cb(new Error(`Invalid file type. Allowed types: xlsx, xls, csv. Received mimetype: ${file.mimetype}`));
-  }
-}).any();
-
-const importBills = async (req, res) => {
+/**
+ * Generate Invoices Received at Site Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getInvoicesReceivedAtSite = async (req, res) => {
   try {
-    await new Promise((resolve, reject) => {
-      upload(req, res, (err) => {
-        if (err instanceof multer.MulterError) {
-          switch (err.code) {
-            case 'LIMIT_FILE_SIZE':
-              reject(new Error('File size too large. Maximum size is 10MB'));
-              break;
-            default:
-              reject(new Error(`File upload error: ${err.message}`));
-          }
-        } else if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
+    // Parse query parameters for filtering
+    const { startDate, endDate, region } = req.query;
+    
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Tax invoice received at site date should be filled
+      "taxInvRecdAtSite": { $ne: null, $exists: true },
+      // Sent to Mumbai should be blank
+      "pimoMumbai.dateReceived": { $eq: null }
+    };
+    
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["taxInvRecdAtSite"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by date received at site
+    const invoices = await Bill.find(filter).sort({ "taxInvRecdAtSite": 1 });
+    
+    console.log(`Found ${invoices.length} invoices received at site but not sent to Mumbai`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalAmount = 0;
+    const reportData = invoices.map((bill, index) => {
+      const taxInvAmt = parseFloat(bill.taxInvAmt || 0);
+      totalAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+      
+      return {
+        srNo: index + 1,
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        taxInvNo: bill.taxInvNo || "N/A",
+        taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+        taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+        dtTaxInvRecdAtSite: formatDate(bill.taxInvRecdAtSite) || "N/A",
+        poNo: bill.poNo || "N/A"
+      };
     });
-
-    if (!req.files || !req.files.length) {
-      return res.status(400).json({
-        success: false,
-        message: "No file uploaded"
-      });
-    }
-
-    // Check if we're in patch-only mode (don't create new bills)
-    const patchOnly = req.query.patchOnly === 'true';
-    console.log(`Import mode: ${patchOnly ? 'patch-only' : 'normal'}`);
-
-    const uploadedFile = req.files[0]; // Get the first uploaded file
-    const tempDir = os.tmpdir();
-    const tempFilePath = path.join(tempDir, uploadedFile.originalname);
     
-    console.log(`Processing file: ${uploadedFile.originalname}`);
-    
-    // Check if we should skip vendor validation
-    const skipVendorValidation = await shouldSkipVendorValidation();
-    if (skipVendorValidation) {
-      console.log('SKIPPING VENDOR VALIDATION - Vendor table is empty or not accessible');
-    }
-    
-    // Extract vendor numbers from Excel/CSV before processing
-    // This allows us to validate vendors first
-    let vendorNos = [];
-    
-    // Write buffer to temporary file
-    fs.writeFileSync(tempFilePath, uploadedFile.buffer);
-    
-    // Check if VendorMaster model is available and validate vendors
-    let validVendors = [];
-    let validVendorNames = []; // Added - use vendor names instead of numbers
-    if (VendorMaster && !skipVendorValidation) {
-      try {
-        // Extract vendor information from the file first
-        const fileExtension = path.extname(uploadedFile.originalname).toLowerCase();
-        if (fileExtension === '.xlsx' || fileExtension === '.xls') {
-          const workbook = new ExcelJS.Workbook();
-          await workbook.xlsx.readFile(tempFilePath);
-          const worksheet = workbook.getWorksheet(1);
-          
-          // Find both vendor number and vendor name columns
-          const headers = [];
-          let vendorNoColIdx = -1;
-          let vendorNameColIdx = -1;
-          worksheet.getRow(1).eachCell((cell, colNumber) => {
-            const header = cell.value?.toString().trim();
-            if (header === 'Vendor no') {
-              vendorNoColIdx = colNumber;
-            }
-            if (header === 'Vendor Name') {
-              vendorNameColIdx = colNumber;
-            }
-          });
-          
-          // If header row not found in first row, try second row (in case of column index row)
-          if (vendorNoColIdx === -1 || vendorNameColIdx === -1) {
-            worksheet.getRow(2).eachCell((cell, colNumber) => {
-              const header = cell.value?.toString().trim();
-              if (header === 'Vendor no') {
-                vendorNoColIdx = colNumber;
-              }
-              if (header === 'Vendor Name') {
-                vendorNameColIdx = colNumber;
-              }
-            });
-          }
-          
-          // Extract vendor numbers and names for reference
-          if (vendorNoColIdx > 0) {
-            console.log(`Found Vendor no column at index ${vendorNoColIdx}`);
-            if (vendorNameColIdx > 0) {
-              console.log(`Found Vendor Name column at index ${vendorNameColIdx}`);
-            }
-            
-            worksheet.eachRow((row, rowNumber) => {
-              if (rowNumber > 2) { // Skip potential header rows
-                const vendorNo = row.getCell(vendorNoColIdx).value;
-                if (vendorNo) {
-                  vendorNos.push(String(vendorNo).trim());
-                }
-              }
-            });
-          } else {
-            console.log('Could not find Vendor no column in Excel file');
-          }
-        }
-        
-        // Query vendor master for validation - use vendor names instead of numbers
-        try {
-          // Count total vendors in database first
-          const totalVendorsInDB = await VendorMaster.countDocuments();
-          console.log(`Total vendors in database: ${totalVendorsInDB}`);
-          
-          if (totalVendorsInDB === 0) {
-            console.log('WARNING: Vendor table is empty, skipping vendor validation');
-            skipVendorValidation = true;
-          } else {
-            // Get all vendors to validate by name
-            const allVendors = await VendorMaster.find().lean();
-            validVendors = allVendors;
-            
-            // Extract vendor names for validation
-            validVendorNames = allVendors.map(v => v.vendorName || '');
-            
-            console.log(`Found ${validVendorNames.length} valid vendor names in the database`);
-            if (validVendorNames.length > 0) {
-              console.log(`Sample vendor names: ${validVendorNames.slice(0, 5).join(', ')}${validVendorNames.length > 5 ? '...' : ''}`);
-            }
-            
-            if (validVendorNames.length === 0) {
-              console.log('WARNING: No vendor names found in the database!');
-              
-              // Try to get a sample of vendors to debug
-              const sampleVendors = await VendorMaster.find().limit(5).lean();
-              console.log(`Sample vendors in DB:`, sampleVendors.map(v => ({
-                vendorNo: v.vendorNo,
-                vendorName: v.vendorName || 'N/A'
-              })));
-            }
-          }
-        } catch (findError) {
-          console.error('Error querying VendorMaster collection:', findError);
-          skipVendorValidation = true;
-        }
-      } catch (error) {
-        console.error('Error pre-validating vendors:', error);
-        skipVendorValidation = true;
-      }
-    } else {
-      console.log('VendorMaster model not available or validation skipped, skipping vendor validation');
-      skipVendorValidation = true;
-    }
-    
-    // Determine file type and process accordingly
-    const fileExtension = path.extname(uploadedFile.originalname).toLowerCase();
-    let importResult;
-
-    try {
-      // Pass the valid vendor list to the import function only if validation is enabled
-      // Now we pass vendor names instead of vendor numbers
-      const validVendorList = skipVendorValidation ? [] : validVendorNames;
-      console.log(`Passing ${validVendorList.length} valid vendor names to import function`);
-      
-      if (fileExtension === '.csv') {
-        // For CSV files, we don't support patch-only mode yet
-        if (patchOnly) {
-          return res.status(400).json({
-            success: false,
-            message: "CSV patching is not supported yet. Please use Excel format."
-          });
-        }
-        importResult = await importBillsFromCSV(tempFilePath, validVendorList);
-      } else if (fileExtension === '.xlsx' || fileExtension === '.xls') {
-        // For Excel files, pass the patchOnly flag
-        importResult = await importBillsFromExcel(tempFilePath, validVendorList, patchOnly);
-      } else {
-        throw new Error("Unsupported file format");
-      }
-    } finally {
-      // Clean up temp file regardless of success or failure
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
-    }
-
-    // Check for non-existent vendors if validation was not skipped
-    if (!skipVendorValidation && importResult.nonExistentVendors && importResult.nonExistentVendors.length > 0) {
-      const totalVendors = vendorNos.length;
-      const invalidVendors = importResult.nonExistentVendors.map(v => v.vendorName || v.vendorNo);
-      const uniqueInvalidVendors = [...new Set(invalidVendors)];
-      
-      return res.status(202).json({  // 202 Accepted - partial processing
-        success: true,
-        message: "Import completed with warnings - some vendors not found in the vendor master",
-        details: {
-          inserted: importResult.inserted?.length || 0,
-          updated: importResult.updated?.length || 0,
-          skipped: importResult.nonExistentVendors.length,
-          totalVendors,
-          validVendors: validVendorNames.length,
-          invalidVendors: uniqueInvalidVendors.length
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Invoices received at site",
+        generatedAt: new Date().toISOString(),
+        selectionCriteria: {
+          dateRange: startDate && endDate ? `from ${startDate} to ${endDate}` : "All dates",
+          region: region || "All regions"
         },
-        nonExistentVendors: uniqueInvalidVendors,
-        skippedRows: importResult.nonExistentVendors.map(v => ({
-          rowNumber: v.rowNumber,
-          srNo: v.srNo, 
-          vendorName: v.vendorName || 'Unknown',
-          vendorNo: v.vendorNo
-        }))
-      });
-    }
-
-    // Return success response
-    return res.status(200).json({
-      success: true,
-      message: `Successfully processed ${importResult.totalProcessed} bills`,
-      details: {
-        inserted: importResult.inserted?.length || 0,
-        updated: importResult.updated?.length || 0,
-        total: importResult.totalProcessed,
-        vendorValidation: skipVendorValidation ? 'skipped' : 'enabled',
-        mode: patchOnly ? 'patch-only' : 'normal'
-      },
-      data: {
-        inserted: importResult.inserted?.map(bill => ({ _id: bill._id, srNo: bill.srNo })) || [],
-        updated: importResult.updated?.map(bill => ({ _id: bill._id, srNo: bill.srNo })) || []
+        sortingCriteria: [
+          "Date Tax Invoice received at Site"
+        ],
+        filterLogic: "Date of tax invoice received at site should be filled AND Sent to Mumbai should be blank",
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalAmount: Number(totalAmount.toFixed(2))
+        }
       }
-    });
+    };
     
+    return res.status(200).json(response);
   } catch (error) {
-    console.error('Import error:', error);
-    return res.status(400).json({
-      success: false,
-      message: error.message || "Failed to import bills",
-      error: error.message
+    console.error('Error generating invoices received at site report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
     });
   }
 };
 
-// Maintain headerMapping here for direct access in patchBillsFromExcel
-const headerMapping = {
-  "Sr No": "srNo",
-  "Sr no Old": "srNoOld",
-  "Type of inv": "typeOfInv",
-  "Region": "region",
-  "Project Description": "projectDescription",
-  "Vendor no": "vendorNo",
-  "Vendor Name": "vendorName",
-  "GST Number": "gstNumber",
-  "206AB Compliance": "compliance206AB",
-  "PAN Status": "panStatus",
-  "If PO created??": "poCreated",
-  "PO no": "poNo",
-  "PO Dt": "poDate",
-  "PO Amt": "poAmt",
-  "Proforma Inv No": "proformaInvNo",
-  "Proforma Inv Dt": "proformaInvDate",
-  "Proforma Inv Amt": "proformaInvAmt",
-  "Proforma Inv Recd at site": "proformaInvRecdAtSite",
-  "Proforma Inv Recd by": "proformaInvRecdBy",
-  "Tax Inv no": "taxInvNo",
-  "Tax Inv Dt": "taxInvDate",
-  "Currency": "currency",
-  "Tax Inv Amt": "taxInvAmt",
-  "Tax Inv Amt ": "taxInvAmt",
-  "Tax Inv Recd at site": "taxInvRecdAtSite",
-  "Tax Inv Recd by": "taxInvRecdBy",
-  "Department": "department",
-  "Remarks by Site Team": "remarksBySiteTeam",
-  "Attachment": "attachment",
-  "Attachment Type": "attachmentType",
-  "Advance Dt": "advanceDate",
-  "Advance Amt": "advanceAmt",
-  "Advance Percentage": "advancePercentage",
-  "Advance Percentage ": "advancePercentage",
-  "Adv request entered by": "advRequestEnteredBy",
-  "Dt given to Quality Engineer": "qualityEngineer.dateGiven",
-  "Name of Quality Engineer": "qualityEngineer.name",
-  "Dt given to QS for Inspection": "qsInspection.dateGiven",
-  "Name of QS": "qsInspection.name",
-  "Checked by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven",
-  "Checked  by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven",
-  "Given to vendor-Query/Final Inv": "vendorFinalInv.dateGiven",
-  "Dt given to QS for COP": "qsCOP.dateGiven",
-  "Name - QS": "qsCOP.name",
-  "COP Dt": "copDetails.date",
-  "COP Amt": "copDetails.amount",
-  "Remarks by QS Team": "remarksByQSTeam",
-  "Dt given for MIGO": "migoDetails.dateGiven",
-  "MIGO no": "migoDetails.no",
-  "MIGO Dt": "migoDetails.date",
-  "MIGO Amt": "migoDetails.amount",
-  "Migo done by": "migoDetails.doneBy",
-  "Dt-Inv returned to Site office": "invReturnedToSite",
-  "Dt given to Site Engineer": "siteEngineer.dateGiven",
-  "Name of Site Engineer": "siteEngineer.name",
-  "Dt given to Architect": "architect.dateGiven",
-  "Name of Architect": "architect.name",
-  "Dt given-Site Incharge": "siteIncharge.dateGiven",
-  "Name-Site Incharge": "siteIncharge.name",
-  "Remarks": "remarks",
-  "Remarks ": "remarks",
-  "Dt given to Site Office for dispatch": "siteOfficeDispatch.dateGiven",
-  "Name-Site Office": "siteOfficeDispatch.name",
-  "Status": "status"
-};
-
-// Function to patch bills from Excel/CSV without creating new records
-const patchBillsFromExcel = async (req, res) => {
+/**
+ * Generate Invoices Courier to Mumbai Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getInvoicesCourierToMumbai = async (req, res) => {
   try {
-    await new Promise((resolve, reject) => {
-      upload(req, res, (err) => {
-        if (err instanceof multer.MulterError) {
-          switch (err.code) {
-            case 'LIMIT_FILE_SIZE':
-              reject(new Error('File size too large. Maximum size is 10MB'));
-              break;
-            default:
-              reject(new Error(`File upload error: ${err.message}`));
-          }
-        } else if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    if (!req.files || !req.files.length) {
-      return res.status(400).json({
-        success: false,
-        message: "No file uploaded"
-      });
-    }
-
-    const uploadedFile = req.files[0]; // Get the first uploaded file
-    const tempDir = os.tmpdir();
-    const tempFilePath = path.join(tempDir, uploadedFile.originalname);
+    // Parse query parameters for filtering
+    const { startDate, endDate, region, nameSiteOffice } = req.query;
     
-    console.log(`Processing file for patch: ${uploadedFile.originalname}`);
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Tax invoice received at site date should be filled
+      "taxInvRecdAtSite": { $ne: null, $exists: true },
+      // Sent to Mumbai should be filled
+      "siteOfficeDispatch.dateGiven": { $ne: null, $exists: true }
+    };
     
-    // Write buffer to temporary file
-    fs.writeFileSync(tempFilePath, uploadedFile.buffer);
-    
-    // Check if VendorMaster model is available and validate vendors
-    const skipVendorValidation = await shouldSkipVendorValidation();
-    let validVendorNames = [];
-    
-    if (!skipVendorValidation && VendorMaster) {
-      try {
-        // Get all vendors from database and use their names for validation
-        const allVendors = await VendorMaster.find().lean();
-        validVendorNames = allVendors.map(v => v.vendorName || '');
-        console.log(`Found ${validVendorNames.length} valid vendor names for validation`);
-        if (validVendorNames.length > 0) {
-          console.log(`Sample vendor names: ${validVendorNames.slice(0, 5).join(', ')}${validVendorNames.length > 5 ? '...' : ''}`);
-        }
-      } catch (error) {
-        console.error('Error fetching vendors:', error);
-      }
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["siteOfficeDispatch.dateGiven"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
     }
     
-    // Use the patchOnly option in importBillsFromExcel to ensure we only update existing bills
-    const fileExtension = path.extname(uploadedFile.originalname).toLowerCase();
-    let importResult;
-    
-    try {
-      if (fileExtension === '.csv') {
-        // For now, we don't support CSV directly for patch
-        // This could be enhanced in the future
-        return res.status(400).json({
-          success: false,
-          message: "CSV patching is not supported yet. Please use Excel format."
-        });
-      } else if (fileExtension === '.xlsx' || fileExtension === '.xls') {
-        importResult = await importBillsFromExcel(tempFilePath, validVendorNames, true);
-      } else {
-        throw new Error("Unsupported file format");
-      }
-    } finally {
-      // Clean up temp file
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
     }
     
-    return res.status(200).json({
-      success: true,
-      message: `Successfully patched ${importResult.updated.length} bills`,
-      details: {
-        updated: importResult.updated.length,
-        skipped: importResult.nonExistentVendors.length,
-        total: importResult.totalProcessed
-      },
-      data: {
-        updated: importResult.updated.map(bill => ({ _id: bill._id, srNo: bill.srNo })),
-        skipped: importResult.nonExistentVendors
-      }
+    // Add site office name filter if provided
+    if (nameSiteOffice) {
+      filter["siteOfficeDispatch.name"] = nameSiteOffice;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by sr no
+    const invoices = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${invoices.length} invoices couriered to Mumbai`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalAmount = 0;
+    const reportData = invoices.map((bill) => {
+      const taxInvAmt = parseFloat(bill.taxInvAmt || 0);
+      totalAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        taxInvNo: bill.taxInvNo || "N/A",
+        taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+        taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+        dtTaxInvRecdAtSite: formatDate(bill.taxInvRecdAtSite) || "N/A",
+        dtTaxInvCourierToMumbai: formatDate(bill.siteOfficeDispatch?.dateGiven) || "N/A",
+        poNo: bill.poNo || "N/A"
+      };
     });
     
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Invoices courier to Mumbai",
+        generatedAt: new Date().toISOString(),
+        selectionCriteria: {
+          dateRange: startDate && endDate ? `from ${startDate} to ${endDate}` : "All dates",
+          region: region || "All regions",
+          nameSiteOffice: nameSiteOffice || "All site offices"
+        },
+        sortingCriteria: [
+          "Sr No (Column 1)"
+        ],
+        filterLogic: "Dt of tax invoice recd at site should be filled AND Sent to mumbai should be filled",
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalAmount: Number(totalAmount.toFixed(2))
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
   } catch (error) {
-    console.error('Patch error:', error);
-    return res.status(400).json({
-      success: false,
-      message: error.message || "Failed to patch bills",
-      error: error.message
+    console.error('Error generating invoices courier to Mumbai report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
     });
   }
 };
 
-export default { generateReport, importBills, patchBillsFromExcel };
+/**
+ * Generate Invoices Received at Mumbai Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getInvoicesReceivedAtMumbai = async (req, res) => {
+  try {
+    // Parse query parameters for filtering
+    const { startDate, endDate, region } = req.query;
+    
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Tax invoice received at Mumbai date should be filled
+      "pimoMumbai.dateReceived": { $ne: null, $exists: true },
+      // Not yet sent to accounts department
+      "accountsDept.dateGiven": { $eq: null }
+    };
+    
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["pimoMumbai.dateReceived"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by sr no
+    const invoices = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${invoices.length} invoices received at Mumbai but not sent to accounts department`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalAmount = 0;
+    const reportData = invoices.map((bill) => {
+      const taxInvAmt = parseFloat(bill.taxInvAmt || 0);
+      totalAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        taxInvNo: bill.taxInvNo || "N/A",
+        taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+        taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+        dtTaxInvRecdAtSite: formatDate(bill.taxInvRecdAtSite) || "N/A",
+        dtTaxInvRecdAtMumbai: formatDate(bill.pimoMumbai?.dateReceived) || "N/A",
+        poNo: bill.poNo || "N/A"
+      };
+    });
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Invoices received at Mumbai",
+        generatedAt: new Date().toISOString(),
+        selectionCriteria: {
+          dateRange: startDate && endDate ? `from ${startDate} to ${endDate}` : "All dates",
+          region: region || "All regions"
+        },
+        sortingCriteria: [
+          "Sr No (Column 1)"
+        ],
+        filterLogic: "Dt of tax invoice recd at mumbai should be filled AND Sent to accts dept should be blank",
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalAmount: Number(totalAmount.toFixed(2))
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error generating invoices received at Mumbai report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Generate Invoices Given to Accounts Department Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getInvoicesGivenToAcctsDept = async (req, res) => {
+  try {
+    // Parse query parameters for filtering
+    const { startDate, endDate, region } = req.query;
+    
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Tax invoice received at Mumbai date should be filled
+      "pimoMumbai.dateReceived": { $ne: null, $exists: true },
+      // Sent to accounts department should be filled
+      "accountsDept.dateGiven": { $ne: null, $exists: true }
+    };
+    
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["accountsDept.dateGiven"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by sr no
+    const invoices = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${invoices.length} invoices given to accounts department`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalInvoiceAmount = 0;
+    let totalCopAmount = 0;
+    const reportData = invoices.map((bill) => {
+      const taxInvAmt = parseFloat(bill.taxInvAmt || 0);
+      const copAmt = parseFloat(bill.copDetails?.amount || 0);
+      
+      totalInvoiceAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+      totalCopAmount += !isNaN(copAmt) ? copAmt : 0;
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        taxInvNo: bill.taxInvNo || "N/A",
+        taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+        taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+        dtGivenToAcctsDept: formatDate(bill.accountsDept?.dateGiven) || "N/A",
+        copAmt: !isNaN(copAmt) ? Number(copAmt.toFixed(2)) : 0,
+        poNo: bill.poNo || "N/A"
+      };
+    });
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Invoices given to Accts Dept",
+        generatedAt: new Date().toISOString(),
+        selectionCriteria: {
+          dateRange: startDate && endDate ? `from ${startDate} to ${endDate}` : "All dates",
+          region: region || "All regions"
+        },
+        sortingCriteria: [
+          "Sr No (Column 1)"
+        ],
+        filterLogic: "Dt of tax invoice recd at mumbai should be filled (Column 62) AND Sent to accts dept should be filled (Column 80)",
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2)),
+          totalCopAmount: Number(totalCopAmount.toFixed(2))
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error generating invoices given to accounts department report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Generate Invoices Given to QS Site Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getInvoicesGivenToQsSite = async (req, res) => {
+  try {
+    // Parse query parameters for filtering
+    const { startDate, endDate, region } = req.query;
+    
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Invoices given to QS site should be filled
+      "qsSite.dateGiven": { $ne: null, $exists: true }
+    };
+    
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["qsSite.dateGiven"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by sr no
+    const invoices = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${invoices.length} invoices given to QS site`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalInvoiceAmount = 0;
+    const reportData = invoices.map((bill) => {
+      const taxInvAmt = parseFloat(bill.taxInvAmt || 0);
+      const copAmt = parseFloat(bill.copDetails?.amount || 0);
+      
+      totalInvoiceAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        taxInvNo: bill.taxInvNo || "N/A",
+        taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+        taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+        dtGivenToQsSite: formatDate(bill.qsSite?.dateGiven) || "N/A",
+        copAmt: !isNaN(copAmt) && copAmt > 0 ? Number(copAmt.toFixed(2)) : null,
+        poNo: bill.poNo || "N/A"
+      };
+    });
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Invoices given to QS site",
+        generatedAt: new Date().toISOString(),
+        selectionCriteria: {
+          dateRange: startDate && endDate ? `from ${startDate} to ${endDate}` : "All dates",
+          region: region || "All regions"
+        },
+        sortingCriteria: [
+          "Sr No (Column 1)"
+        ],
+        filterLogic: "Dt of Inv given to QS site should be filled (Column 35)",
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2))
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error generating invoices given to QS site report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Generate Invoices Paid Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getInvoicesPaid = async (req, res) => {
+  try {
+    // Parse query parameters for filtering
+    const { startDate, endDate, region, poIdentification } = req.query;
+    
+    // Build filter object based on actual bill schema
+    const filter = {
+      // Date of payment should be filled (Column 89)
+      "accountsDept.paymentDate": { $ne: null, $exists: true }
+    };
+    
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["accountsDept.paymentDate"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+    }
+    
+    // Add PO identification filter if provided (Column 38)
+    if (poIdentification) {
+      filter["poIdentification"] = poIdentification;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by sr no
+    const invoices = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${invoices.length} invoices paid`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalInvoiceAmount = 0;
+    let totalPaymentAmount = 0;
+    const reportData = invoices.map((bill) => {
+      const taxInvAmt = parseFloat(bill.taxInvAmt || 0);
+      const paymentAmt = parseFloat(bill.accountsDept?.paymentAmt || 0);
+      
+      totalInvoiceAmount += !isNaN(taxInvAmt) ? taxInvAmt : 0;
+      totalPaymentAmount += !isNaN(paymentAmt) ? paymentAmt : 0;
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        taxInvNo: bill.taxInvNo || "N/A",
+        taxInvDate: formatDate(bill.taxInvDate) || "N/A",
+        taxInvAmt: !isNaN(taxInvAmt) ? Number(taxInvAmt.toFixed(2)) : 0,
+        dtGivenToAcctsDept: formatDate(bill.accountsDept?.dateGiven) || "N/A",
+        dtRecdInAcctsDept: formatDate(bill.accountsDept?.dateReceived) || "N/A",
+        dtOfPayment: formatDate(bill.accountsDept?.paymentDate) || "N/A",
+        paymentAmt: !isNaN(paymentAmt) ? Number(paymentAmt.toFixed(2)) : 0,
+        poNo: bill.poNo || "N/A"
+      };
+    });
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Invoices paid",
+        generatedAt: new Date().toISOString(),
+        selectionCriteria: {
+          dateRange: startDate && endDate ? `from ${startDate} to ${endDate}` : "All dates",
+          region: region || "All regions",
+          poIdentification: poIdentification || "All PO identifications"
+        },
+        sortingCriteria: [
+          "Sr No (Column 1)"
+        ],
+        filterLogic: "Dt of payment should be filled (Column 89)",
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2)),
+          totalPaymentAmount: Number(totalPaymentAmount.toFixed(2))
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error generating invoices paid report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Generate Report of Pending Bills with PIMO/SVKM Site Office/QS Mumbai Office/QS Site Office
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getPendingBillsReport = async (req, res) => {
+  try {
+    // Parse query parameters for filtering
+    const { startDate, endDate, region } = req.query;
+    
+    // Build filter object based on actual bill schema
+    // This report gets bills that are still pending with various offices
+    const filter = {
+      // Invoice received at site but not yet completed/paid
+      "taxInvRecdAtSite": { $ne: null, $exists: true },
+      // Not marked as completed (payment not made)
+      "accountsDept.paymentDate": { $eq: null }
+    };
+    
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      filter["taxInvRecdAtSite"] = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Fetch bills from database, sort by sr no
+    const pendingBills = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${pendingBills.length} pending bills`);
+    
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Process data for response
+    let totalInvoiceAmount = 0;
+    const reportData = pendingBills.map((bill) => {
+      const invoiceAmount = parseFloat(bill.taxInvAmt || 0);
+      totalInvoiceAmount += !isNaN(invoiceAmount) ? invoiceAmount : 0;
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        invoiceNo: bill.taxInvNo || "N/A",
+        invoiceDate: formatDate(bill.taxInvDate) || "N/A",
+        invoiceAmount: !isNaN(invoiceAmount) ? Number(invoiceAmount.toFixed(2)) : 0,
+        dateInvoiceReceivedAtSite: formatDate(bill.taxInvRecdAtSite) || "N/A",
+        dateBillReceivedAtPimoRrrm: formatDate(bill.pimoMumbai?.dateReceived) || "N/A",
+        poNo: bill.poNo || "N/A"
+      };
+    });
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Reports of pending bills with PIMO/SVKM site office/QS Mumbai office/QS site office",
+        generatedAt: new Date().toISOString(),
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2))
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error generating pending bills report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Generate Bill Journey Report
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getBillJourney = async (req, res) => {
+  try {
+    // Parse query parameters for filtering
+    const { startDate, endDate, region, vendorName } = req.query;
+    
+    // Build filter object - start with an empty filter to see if any bills exist
+    const filter = {};
+    
+    console.log("Initial query with empty filter to check database contents");
+    const totalCount = await Bill.countDocuments({});
+    console.log(`Total bills in database: ${totalCount}`);
+    
+    // Check if dates are provided and valid before adding to filter
+    if (startDate && endDate) {
+      try {
+        // Parse dates and ensure they're valid
+        const parsedStartDate = new Date(startDate);
+        const parsedEndDate = new Date(endDate);
+        
+        if (!isNaN(parsedStartDate) && !isNaN(parsedEndDate)) {
+          // Valid dates, add to filter
+          filter["taxInvDate"] = { 
+            $gte: parsedStartDate, 
+            $lte: parsedEndDate 
+          };
+          console.log(`Using date range: ${parsedStartDate.toISOString()} to ${parsedEndDate.toISOString()}`);
+        } else {
+          console.log(`Invalid dates provided: ${startDate}, ${endDate}`);
+        }
+      } catch (dateError) {
+        console.error("Date parsing error:", dateError);
+        // Continue without date filter if there's an error
+      }
+    }
+    
+    // Add region filter if provided
+    if (region) {
+      filter["region"] = region;
+      console.log(`Using region filter: ${region}`);
+    }
+    
+    // Add vendor filter if provided
+    if (vendorName) {
+      filter["vendorName"] = vendorName;
+      console.log(`Using vendor filter: ${vendorName}`);
+    }
+    
+    console.log("Filter being used:", JSON.stringify(filter, null, 2));
+    
+    // Debug database schema - get first bill to check field names
+    const sampleBill = await Bill.findOne({});
+    if (sampleBill) {
+      console.log("Sample bill document fields:", Object.keys(sampleBill._doc));
+      console.log("Sample taxInvDate value:", sampleBill.taxInvDate);
+    } else {
+      console.log("No bills found in database at all");
+    }
+    
+    // Fetch bills from database, sort by sr no
+    const bills = await Bill.find(filter).sort({ "srNo": 1 });
+    
+    console.log(`Found ${bills.length} bills for journey report after applying filters`);
+    
+    // If no bills found, try a more relaxed query
+    if (bills.length === 0 && (startDate || endDate || region || vendorName)) {
+      console.log("No bills found with filters, trying more relaxed query...");
+      // Try just the date filter without other constraints
+      const relaxedFilter = {};
+      if (startDate && endDate) {
+        const parsedStartDate = new Date(startDate);
+        const parsedEndDate = new Date(endDate);
+        if (!isNaN(parsedStartDate) && !isNaN(parsedEndDate)) {
+          relaxedFilter["taxInvDate"] = { 
+            $gte: parsedStartDate, 
+            $lte: parsedEndDate 
+          };
+        }
+      }
+      const relaxedBills = await Bill.find(relaxedFilter).limit(10);
+      console.log(`Found ${relaxedBills.length} bills with relaxed query`);
+      
+      if (relaxedBills.length > 0) {
+        // If we found bills with the relaxed query, check if they have the expected fields
+        const sampleBill = relaxedBills[0];
+        console.log("Sample bill with relaxed query:", {
+          id: sampleBill._id,
+          srNo: sampleBill.srNo,
+          region: sampleBill.region,
+          taxInvDate: sampleBill.taxInvDate,
+          vendorName: sampleBill.vendorName
+        });
+      }
+    }
+    
+    // Continue with report generation even if no bills found
+    // Format date strings properly
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : 
+        `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    };
+    
+    // Calculate date differences in days
+    const daysBetween = (date1, date2) => {
+      if (!date1 || !date2) return null;
+      
+      const d1 = new Date(date1);
+      const d2 = new Date(date2);
+      
+      if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return null;
+      
+      // Calculate difference in milliseconds and convert to days
+      const diffTime = Math.abs(d2 - d1);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      return diffDays;
+    };
+    
+    // Process data for response
+    let totalInvoiceAmount = 0;
+    let totalSiteDays = 0;
+    let totalMumbaiDays = 0;
+    let totalAccountsDays = 0;
+    let totalPaymentDays = 0;
+    
+    let countSiteDays = 0;
+    let countMumbaiDays = 0;
+    let countAccountsDays = 0;
+    let countPaymentDays = 0;
+    
+    const reportData = bills.map((bill) => {
+      const invoiceAmount = parseFloat(bill.taxInvAmt || 0);
+      totalInvoiceAmount += !isNaN(invoiceAmount) ? invoiceAmount : 0;
+      
+      // Calculate delays and processing days
+      const delay_for_receiving_invoice = daysBetween(bill.taxInvDate, bill.taxInvRecdAtSite);
+      
+      // Days at site: from receipt at site to dispatch to Mumbai
+      const no_of_Days_Site = daysBetween(bill.taxInvRecdAtSite, bill.siteOfficeDispatch?.dateGiven);
+      if (no_of_Days_Site !== null) {
+        totalSiteDays += no_of_Days_Site;
+        countSiteDays++;
+      }
+      
+      // Days at Mumbai: from receipt at Mumbai to given to accounts
+      const no_of_Days_at_Mumbai = daysBetween(bill.pimoMumbai?.dateReceived, bill.accountsDept?.dateGiven);
+      if (no_of_Days_at_Mumbai !== null) {
+        totalMumbaiDays += no_of_Days_at_Mumbai;
+        countMumbaiDays++;
+      }
+      
+      // Days at accounts: from receipt at accounts to payment
+      const no_of_Days_at_AC = daysBetween(bill.accountsDept?.dateReceived, bill.accountsDept?.paymentDate);
+      if (no_of_Days_at_AC !== null) {
+        totalAccountsDays += no_of_Days_at_AC;
+        countAccountsDays++;
+      }
+      
+      // Total days for payment: from invoice date to payment date
+      const days_for_payment = daysBetween(bill.taxInvDate, bill.accountsDept?.paymentDate);
+      if (days_for_payment !== null) {
+        totalPaymentDays += days_for_payment;
+        countPaymentDays++;
+      }
+      
+      return {
+        srNo: bill.srNo || "N/A",
+        region: bill.region || "N/A",
+        projectDescription: bill.projectDescription || "N/A",
+        vendorName: bill.vendorName || "N/A",
+        invoiceDate: formatDate(bill.taxInvDate) || "N/A",
+        invoiceAmount: !isNaN(invoiceAmount) ? Number(invoiceAmount.toFixed(2)) : 0,
+        delay_for_receiving_invoice,
+        no_of_Days_Site,
+        no_of_Days_at_Mumbai,
+        no_of_Days_at_AC,
+        days_for_payment
+      };
+    });
+    
+    // Calculate averages
+    const avgSiteDays = countSiteDays > 0 ? Number((totalSiteDays / countSiteDays).toFixed(1)) : 0;
+    const avgMumbaiDays = countMumbaiDays > 0 ? Number((totalMumbaiDays / countMumbaiDays).toFixed(2)) : 0;
+    const avgAccountsDays = countAccountsDays > 0 ? Number((totalAccountsDays / countAccountsDays).toFixed(1)) : 0;
+    const avgPaymentDays = countPaymentDays > 0 ? Number((totalPaymentDays / countPaymentDays).toFixed(1)) : 0;
+    
+    // Prepare the final response
+    const response = {
+      report: {
+        title: "Bill Journey",
+        generatedAt: new Date().toISOString(),
+        filterCriteria: {
+          dateRange: startDate && endDate ? {
+            from: formatDate(new Date(startDate)),
+            to: formatDate(new Date(endDate))
+          } : "All dates"
+        },
+        data: reportData,
+        summary: {
+          totalCount: reportData.length,
+          totalInvoiceAmount: Number(totalInvoiceAmount.toFixed(2)),
+          averageProcessingDays: {
+            siteProcessing: avgSiteDays,
+            mumbaiProcessing: avgMumbaiDays,
+            accountingProcessing: avgAccountsDays,
+            totalPaymentDays: avgPaymentDays
+          }
+        }
+      }
+    };
+    
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error generating bill journey report:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error generating report', 
+      error: error.message 
+    });
+  }
+};
