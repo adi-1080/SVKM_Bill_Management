@@ -1,7 +1,8 @@
 import express from "express";
-import workflowController from "../controllers/workflow-controller.js";
-import { authenticate } from "../middleware/auth-middleware.js";
-import { authorize } from "../middleware/auth-middleware.js";
+// import workflowController from "../controllers/workflow-controller.js";
+import { authenticate } from "../middleware/middleware.js";
+import { authorize } from "../middleware/middleware.js";
+import {getWorkflowStats, changeWorkflowState, getBillWorkflowHistory, getUserWorkflowActivity, getRolePerformanceMetrics} from "../controllers/workflow-controller.js";
 
 const router = express.Router();
 
@@ -9,12 +10,12 @@ const router = express.Router();
 router.use(authenticate);
 
 // Dashboard statistics - available to all authenticated users
-router.get("/stats", workflowController.getWorkflowStats);
+router.get("/stats", getWorkflowStats);
 
-router.post("/worflowUpdate", workflowController.changeWorkflowState);
+router.post("/worflowUpdate", changeWorkflowState);
 
 // Bill workflow history - available to all authenticated users
-router.get("/bill/:billId/history", workflowController.getBillWorkflowHistory);
+router.get("/bill/:billId/history", getBillWorkflowHistory);
 
 // User workflow activity - users can view their own activity, admins can view any user
 router.get(
@@ -27,14 +28,14 @@ router.get(
         // Otherwise, only admins can view
         authorize(["admin"])(req, res, next);
     },
-    workflowController.getUserWorkflowActivity
+    getUserWorkflowActivity
 );
 
 // Role performance metrics - admin only
 router.get(
     "/performance/roles",
     authorize(["admin"]),
-    workflowController.getRolePerformanceMetrics
+    getRolePerformanceMetrics
 );
 
 export default router;
