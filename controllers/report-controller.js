@@ -220,7 +220,7 @@ export const getInvoicesReceivedAtSite = async (req, res) => {
     if (startDate && endDate) {
       filter["taxInvRecdAtSite"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate) 
       };
     }
     
@@ -316,7 +316,7 @@ export const getInvoicesCourierToMumbai = async (req, res) => {
     if (startDate && endDate) {
       filter["siteOfficeDispatch.dateGiven"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate)
       };
     }
     
@@ -419,7 +419,7 @@ export const getInvoicesReceivedAtMumbai = async (req, res) => {
     if (startDate && endDate) {
       filter["pimoMumbai.dateReceived"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate)
       };
     }
     
@@ -516,7 +516,7 @@ export const getInvoicesGivenToAcctsDept = async (req, res) => {
     if (startDate && endDate) {
       filter["accountsDept.dateGiven"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate) 
       };
     }
     
@@ -616,7 +616,7 @@ export const getInvoicesGivenToQsSite = async (req, res) => {
     if (startDate && endDate) {
       filter["qsSite.dateGiven"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate) 
       };
     }
     
@@ -713,7 +713,7 @@ export const getInvoicesPaid = async (req, res) => {
     if (startDate && endDate) {
       filter["accountsDept.paymentDate"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate)
       };
     }
     
@@ -824,7 +824,7 @@ export const getPendingBillsReport = async (req, res) => {
     if (startDate && endDate) {
       filter["taxInvRecdAtSite"] = { 
         $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        $lte: endOfDay(endDate)
       };
     }
     
@@ -919,7 +919,7 @@ export const getBillJourney = async (req, res) => {
           // Valid dates, add to filter
           filter["taxInvDate"] = { 
             $gte: parsedStartDate, 
-            $lte: parsedEndDate 
+            $lte: endOfDay(endDate) 
           };
           console.log(`Using date range: ${parsedStartDate.toISOString()} to ${parsedEndDate.toISOString()}`);
         } else {
