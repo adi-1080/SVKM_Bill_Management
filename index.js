@@ -32,7 +32,7 @@ import reportRoute from "./routes/billdownload-route.js";
 import authRoute from "./routes/auth-route.js";
 import roleRoute from "./routes/role-route.js";
 import reportRoutes from "./routes/report-route.js";
-import worflowRoute from "./routes/workflow-route.js";
+import worflowRoute from "./routes/workflow-routes.js";
 
 app.use("/auth", authRoute);
 app.use("/bill", billRoute);
