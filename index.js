@@ -16,12 +16,13 @@ connectDB();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({
-  credentials: true,
-  origin: process.env.CLIENT_URL,
-  methods: ["GET", "POST", "PUT", "DELETE"]
-}));
-
+app.use(
+    cors({
+        credentials: true,
+        origin: process.env.CLIENT_URL,
+        methods: ["GET", "POST", "PUT", "DELETE"],
+    })
+);
 
 import billRoute from "./routes/bill-route.js";
 import userRoute from "./routes/user-route.js";
@@ -31,40 +32,41 @@ import reportRoute from "./routes/billdownload-route.js";
 import authRoute from "./routes/auth-route.js";
 import roleRoute from "./routes/role-route.js";
 import reportRoutes from "./routes/report-route.js";
+import worflowRoute from "./routes/workflow-routes.js";
 
-app.use('/auth', authRoute);
-app.use('/bill', billRoute);
-app.use('/users', userRoute);
-app.use('/vendors', vendorRoute);
-app.use('/stats', statRoute);
-app.use('/report',reportRoute);
-app.use('/role', roleRoute);
-app.use('/api/reports', reportRoutes);
-
+app.use("/auth", authRoute);
+app.use("/bill", billRoute);
+app.use("/users", userRoute);
+app.use("/vendors", vendorRoute);
+app.use("/stats", statRoute);
+app.use("/report", reportRoute);
+app.use("/role", roleRoute);
+app.use("/api/reports", reportRoutes);
+app.use("/api/worflow", worflowRoute);
 
 // Swagger docs route
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  
-  if (err.name === 'MulterError') {
-    return res.status(400).json({
-      success: false,
-      message: `File upload error: ${err.message}`
+    console.error(err.stack);
+
+    if (err.name === "MulterError") {
+        return res.status(400).json({
+            success: false,
+            message: `File upload error: ${err.message}`,
+        });
+    }
+
+    res.status(500).json({
+        success: false,
+        message: err.message || "Internal server error",
+        error: process.env.NODE_ENV === "production" ? undefined : err.stack,
     });
-  }
-  
-  res.status(500).json({
-    success: false,
-    message: err.message || "Internal server error",
-    error: process.env.NODE_ENV === 'production' ? undefined : err.stack
-  });
 });
 
 app.listen(port, () => {
-  console.log(`Server is listening on port ${port}`);
+    console.log(`Server is listening on port ${port}`);
 });
 
 export default app;
