@@ -34,16 +34,26 @@ export const changeWorkflowState = async (req, res) => {
     const lastWorkflow = await WorkFlowFinal.findOne({ billId }).sort({
       createdAt: -1,
     });
-    const newWorkflow = new WorkFlowFinal.create({
-      fromUser,
-      toUser,
+    let newWorkflow = await WorkFlowFinal.create({
+      fromUser: {
+        id: fromId,
+        name: fromName,
+        role: fromRole
+      },
+      toUser: {
+        id: toId ? toId : null,
+        name: toName,
+        role: toRole
+      },
       billId,
       action,
       remarks,
       duration: lastWorkflow ? new Date() - lastWorkflow.createdAt : 0,
     })
-      .populate("fromUser", "name role department")
-      .populate("toUser", "name role department");
+
+    newWorkflow = await newWorkflow
+      .populate("fromUser.id", "name role department")
+      .populate("toUser.id", "name role department");
 
     if (
       (fromRole == "site_officer" ||
