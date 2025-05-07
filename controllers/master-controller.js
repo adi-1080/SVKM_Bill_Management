@@ -6,7 +6,6 @@ import User from '../models/user-model.js';
 // import PanStatus from '../models/pan-status-master-model.js';
 // import Region from '../models/region-master-model.js';
 // import NatureOfWork from '../models/natureofwork-master-model.js';
-// import Status from '../models/status-master-model.js';
 // import Currency from '../models/currency-master-model.js';
 
 const masterController = {
@@ -115,11 +114,43 @@ const masterController = {
     }
   },
 
-  // PAN Status Master CRUD (stub)
-  async createPanStatus(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async getPanStatuses(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async updatePanStatus(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async deletePanStatus(req, res) { res.status(501).json({ error: 'Not implemented' }); },
+  // PAN Status Master CRUD
+  async createPanStatus(req, res) {
+    try {
+      const panStatus = new (await import('../models/pan-status-master-model.js')).default(req.body);
+      await panStatus.save();
+      res.status(201).json(panStatus);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async getPanStatuses(req, res) {
+    try {
+      const PanStatus = (await import('../models/pan-status-master-model.js')).default;
+      const panStatuses = await PanStatus.find();
+      res.json(panStatuses);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+  async updatePanStatus(req, res) {
+    try {
+      const PanStatus = (await import('../models/pan-status-master-model.js')).default;
+      const panStatus = await PanStatus.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      res.json(panStatus);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async deletePanStatus(req, res) {
+    try {
+      const PanStatus = (await import('../models/pan-status-master-model.js')).default;
+      await PanStatus.findByIdAndDelete(req.params.id);
+      res.json({ message: 'PAN Status deleted' });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
 
   // Region Master CRUD (stub)
   async createRegion(req, res) {
@@ -178,17 +209,83 @@ const masterController = {
     }
   },
 
-  // Nature of Work Master CRUD (stub)
-  async createNatureOfWork(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async getNatureOfWorks(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async updateNatureOfWork(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async deleteNatureOfWork(req, res) { res.status(501).json({ error: 'Not implemented' }); },
+  // Nature of Work Master CRUD
+  async createNatureOfWork(req, res) {
+    try {
+      const NatureOfWork = (await import('../models/nature-of-work-master-model.js')).default;
+      const natureOfWork = new NatureOfWork(req.body);
+      await natureOfWork.save();
+      res.status(201).json(natureOfWork);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async getNatureOfWorks(req, res) {
+    try {
+      const NatureOfWork = (await import('../models/nature-of-work-master-model.js')).default;
+      const natureOfWorks = await NatureOfWork.find();
+      res.json(natureOfWorks);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+  async updateNatureOfWork(req, res) {
+    try {
+      const NatureOfWork = (await import('../models/nature-of-work-master-model.js')).default;
+      const natureOfWork = await NatureOfWork.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      res.json(natureOfWork);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async deleteNatureOfWork(req, res) {
+    try {
+      const NatureOfWork = (await import('../models/nature-of-work-master-model.js')).default;
+      await NatureOfWork.findByIdAndDelete(req.params.id);
+      res.json({ message: 'Nature of Work deleted' });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
 
-  // Currency Master CRUD (stub)
-  async createCurrency(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async getCurrencies(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async updateCurrency(req, res) { res.status(501).json({ error: 'Not implemented' }); },
-  async deleteCurrency(req, res) { res.status(501).json({ error: 'Not implemented' }); },
+  // Currency Master CRUD
+  async createCurrency(req, res) {
+    try {
+      const Currency = (await import('../models/currency-master-model.js')).default;
+      const currency = new Currency(req.body);
+      await currency.save();
+      res.status(201).json(currency);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async getCurrencies(req, res) {
+    try {
+      const Currency = (await import('../models/currency-master-model.js')).default;
+      const currencies = await Currency.find();
+      res.json(currencies);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+  async updateCurrency(req, res) {
+    try {
+      const Currency = (await import('../models/currency-master-model.js')).default;
+      const currency = await Currency.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      res.json(currency);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async deleteCurrency(req, res) {
+    try {
+      const Currency = (await import('../models/currency-master-model.js')).default;
+      await Currency.findByIdAndDelete(req.params.id);
+      res.json({ message: 'Currency deleted' });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
 };
 
 export default masterController;
