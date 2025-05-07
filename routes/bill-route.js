@@ -33,4 +33,7 @@ router.put('/:id/workflow', authenticate, billController.updateWorkflowState);
 // Workflow state update 2
 router.patch('/:id/workflow2', authenticate, billController.changeWorkflowState);
 
-export default router; 
+// PATCH route for editing bill by id or srNo (id is optional)
+router.patch('/:id?', billController.patchBill);
+
+export default router;
