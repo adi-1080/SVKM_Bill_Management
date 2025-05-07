@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import mongoose from "mongoose";
 import Bill from "../models/bill-model.js";  // Add this import
+import RegionMaster from "../models/region-master-model.js";
 
 // Complete fields array matching Excel columns
 export const fields = [
@@ -621,7 +622,7 @@ export const findNextAvailableSrNo = async (basePrefix, baseNumber) => {
 };
 
 // Add validation function for required fields with defaults
-export const validateRequiredFields = (data) => {
+export const validateRequiredFields = async (data) => {
   const requiredFields = [
     'typeOfInv',
     'projectDescription',
@@ -709,51 +710,16 @@ export const validateRequiredFields = (data) => {
     data.taxInvDate = parseDate(data.taxInvDate);
   }
 
-  // Region validation logic
+  // Region validation logic (dynamic)
   if (data.region) {
-    const validRegions = [
-      "MUMBAI", "KHARGHAR", "AHMEDABAD", "BANGALURU", "BHUBANESHWAR",
-      "CHANDIGARH", "DELHI", "NOIDA", "NAGPUR", "GANSOLI", "HOSPITAL",
-      "DHULE", "SHIRPUR", "INDORE", "HYDERABAD"
-    ];
-    
-    // Special case direct mappings
-    const directMappings = {
-      "shirpur": "SHIRPUR",
-      "ahmedabad": "AHMEDABAD",
-      "mumbai": "MUMBAI",
-      "chandigarh": "CHANDIGARH",
-      "delhi": "DELHI",
-      "noida": "NOIDA",
-      "nagpur": "NAGPUR",
-      "indore": "INDORE",
-      "hyderabad": "HYDERABAD",
-      "dhule": "DHULE",
-      "kharghar": "KHARGHAR"
-    };
-    
-    // Try direct mapping first (case insensitive)
-    const normalizedInput = data.region.trim().toLowerCase();
-    if (directMappings[normalizedInput]) {
-      data.region = directMappings[normalizedInput];
+    const normalizedInput = data.region.trim();
+    // Try to find the region in RegionMaster (case-insensitive)
+    const regionDoc = await RegionMaster.findOne({ name: { $regex: `^${normalizedInput}$`, $options: "i" } });
+    if (regionDoc) {
+      data.region = regionDoc.name;
     } else {
-      // Try exact case-insensitive match with validRegions
-      const exactMatch = validRegions.find(r => r.toLowerCase() === normalizedInput);
-      if (exactMatch) {
-        data.region = exactMatch;
-      } else {
-        // Try partial matches as fallback
-        const partialMatches = validRegions.filter(r => 
-          r.toLowerCase().includes(normalizedInput) || 
-          normalizedInput.includes(r.toLowerCase())
-        );
-        
-        if (partialMatches.length > 0) {
-          data.region = partialMatches[0];
-        } else {
-          data.region = "MUMBAI"; // Default if no match
-        }
-      }
+      // If not found, fallback to default or leave as is
+      data.region = "MUMBAI";
     }
   }
 

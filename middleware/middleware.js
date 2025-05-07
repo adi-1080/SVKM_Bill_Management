@@ -18,7 +18,13 @@ export const authMiddleware = (req, res, next) => {
   }
 };
 
-
+// Admin-only middleware
+export const isAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    return next();
+  }
+  return res.status(403).json({ success: false, message: 'Admin access required' });
+};
 
 const statePermissions = {
   // Map of states and which roles can take action on them

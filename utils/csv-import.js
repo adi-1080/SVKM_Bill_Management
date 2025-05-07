@@ -4,6 +4,7 @@ import csvParser from 'csv-parser';
 import ExcelJS from 'exceljs';
 import Bill from "../models/bill-model.js";
 import mongoose from "mongoose";
+import PanStatusMaster from "../models/pan-status-master-model.js";
 
 // Import helper functions from csv-patch.js
 import {
@@ -72,6 +73,17 @@ export const importBillsFromCSV = async (filePath, validVendorNos = []) => {
       rowData.amount = rowData.taxInvAmt || 0;
       rowData.natureOfWork = rowData.typeOfInv || "Others";
       rowData.vendor = new mongoose.Types.ObjectId();
+
+      // PAN Status mapping
+      if (rowData.panStatus) {
+        let panStatusDoc = null;
+        if (typeof rowData.panStatus === "string") {
+          panStatusDoc = await PanStatusMaster.findOne({ name: rowData.panStatus.toUpperCase() });
+        } else if (typeof rowData.panStatus === "object" && rowData.panStatus._id) {
+          panStatusDoc = await PanStatusMaster.findById(rowData.panStatus._id);
+        }
+        rowData.panStatus = panStatusDoc ? panStatusDoc._id : null;
+      }
 
       // Convert types
       const typedData = convertTypes(rowData);
@@ -318,6 +330,17 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
                   }
                 }
               }
+
+              // PAN Status mapping
+              if (rowData.panStatus) {
+                let panStatusDoc = null;
+                if (typeof rowData.panStatus === "string") {
+                  panStatusDoc = await PanStatusMaster.findOne({ name: rowData.panStatus.toUpperCase() });
+                } else if (typeof rowData.panStatus === "object" && rowData.panStatus._id) {
+                  panStatusDoc = await PanStatusMaster.findById(rowData.panStatus._id);
+                }
+                rowData.panStatus = panStatusDoc ? panStatusDoc._id : null;
+              }
               
               const typedData = convertTypes(rowData);
               const validatedData = validateRequiredFields(typedData);
@@ -426,6 +449,17 @@ export const importBillsFromExcel = async (filePath, validVendorNos = [], patchO
                 rowData.accountsDept.returnedToPimo = null;
               }
             }
+          }
+
+          // PAN Status mapping
+          if (rowData.panStatus) {
+            let panStatusDoc = null;
+            if (typeof rowData.panStatus === "string") {
+              panStatusDoc = await PanStatusMaster.findOne({ name: rowData.panStatus.toUpperCase() });
+            } else if (typeof rowData.panStatus === "object" && rowData.panStatus._id) {
+              panStatusDoc = await PanStatusMaster.findById(rowData.panStatus._id);
+            }
+            rowData.panStatus = panStatusDoc ? panStatusDoc._id : null;
           }
           
           const typedData = convertTypes(rowData);
