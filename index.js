@@ -46,7 +46,7 @@ app.use("/role", roleRoute);
 app.use("/sentBills", sentBillsRoute);
 app.use("/master", masterRoute);
 app.use("/api/reports", reportRoutes);
-app.use("/api/worflow", worflowRoute);
+app.use("/workflow", worflowRoute);
 
 
 // Swagger docs route
