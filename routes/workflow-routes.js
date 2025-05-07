@@ -19,7 +19,7 @@ router.use(authenticate);
 // Dashboard statistics - available to all authenticated users
 router.get("/stats", getWorkflowStats);
 
-router.post("/worflowUpdate", changeWorkflowState);
+router.post("/changeState", changeWorkflowState);
 router.get("/getWorflowHistory/:id", getBillHistory);
 
 // Bill workflow history - available to all authenticated users

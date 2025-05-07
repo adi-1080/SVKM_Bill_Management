@@ -1,7 +1,84 @@
 import Bill from "../models/bill-model.js";
-import WorkflowTransition from "../models/workflow-transition-model.js";
 import mongoose from "mongoose";
 import WorkFlowFinal from "../models/workflow-final-model.js";
+/* 
+@Krishna
+Fields not covered currently:(Check Logic and update if needed)
+
+Proforma Invoice Details:
+proformaInvNo
+proformaInvDate
+proformaInvAmt
+proformaInvRecdAtSite
+proformaInvRecdBy
+
+Tax Invoice Details:
+taxInvNo
+taxInvDate
+taxInvAmt
+taxInvRecdAtSite
+taxInvRecdBy
+
+PO Details:
+poNo
+poDate
+poAmt
+
+Advance Payment:
+advanceDate
+advanceAmt
+advancePercentage
+advRequestEnteredBy
+
+MIGO Details:
+migoDetails.date
+migoDetails.no
+migoDetails.amount
+migoDetails.doneBy
+migoDetails.dateGiven
+
+COP/SES/IT/Approval:
+qsMeasurementCheck.dateGiven
+vendorFinalInv.name, vendorFinalInv.dateGiven
+qsCOP.name, qsCOP.dateGiven
+copDetails.date, copDetails.amount
+sesDetails.no, sesDetails.amount, sesDetails.date, sesDetails.doneBy
+itDept.name, itDept.dateGiven, itDept.dateReceived
+approvalDetails.directorApproval.dateGiven, dateReceived
+approvalDetails.remarksPimoMumbai
+
+Accounts/Payment:
+accountsDept.invBookingChecking
+accountsDept.paymentInstructions
+accountsDept.remarksForPayInstructions
+accountsDept.f110Identification
+accountsDept.paymentDate
+accountsDept.hardCopy
+accountsDept.accountsIdentification
+accountsDept.paymentAmt
+accountsDept.status (except for auto-paid on paymentDate)
+
+Returned/Received Dates:
+invReturnedToSite
+accountsDept.returnedToPimo
+accountsDept.receivedBack
+pimoMumbai.dateReceived
+pimoMumbai.dateReceivedFromIT
+pimoMumbai.dateReceivedFromPIMO
+accountsDept.dateReceived
+qsMumbai.dateGiven (partially covered)
+siteOfficeDispatch.dateGiven (partially covered)
+
+Other:
+attachment, attachmentType
+compliance206AB
+panStatus
+region
+vendor, vendorNo, vendorName, gstNumber
+department
+remarksByQSTeam (partially covered)
+remarks (partially covered)
+*/
 
 export const changeWorkflowState = async (req, res) => {
   try {
@@ -41,7 +118,6 @@ export const changeWorkflowState = async (req, res) => {
         role: fromRole
       },
       toUser: {
-        id: toId ? toId : null,
         name: toName,
         role: toRole
       },
@@ -51,10 +127,14 @@ export const changeWorkflowState = async (req, res) => {
       duration: lastWorkflow ? new Date() - lastWorkflow.createdAt : 0,
     })
 
-    newWorkflow = await newWorkflow
-      .populate("fromUser.id", "name role department")
-      .populate("toUser.id", "name role department");
+    // Use a single populate call with an array for document instance
+    newWorkflow = await newWorkflow.populate([
+      { path: "fromUser.id", select: "name role department" },
+      { path: "toUser.id", select: "name role department" }
+    ]);
 
+    const now = new Date();
+    let billWorkflow = null;
     if (
       (fromRole == "site_officer" ||
         fromRole == "quality_inspector" ||
@@ -71,44 +151,51 @@ export const changeWorkflowState = async (req, res) => {
         toRole == "site_officer" ||
         toRole == "site_pimo")
     ) {
-      const billWorflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            maxCount: 1,
-            currentCount: 1,
-          },
-        },
-        { new: true }
-      );
-
+      let setObj = { maxCount: 1, currentCount: 1 };
       if (toRole == "quality_inspector") {
-        billFound.qualityEngineer.dateGiven = new Date();
-        billFound.qualityEngineer.name = toName;
+        console.log("Forwarding to Quality Inspector from Site Officer");
+        setObj["qualityEngineer.dateGiven"] = now;
+        setObj["qualityEngineer.name"] = toName;
       } else if (toRole == "quantity_surveyor") {
-        billFound.qsInspection.dateGiven = new Date();
-        billFound.qsInspection.name = toName;
+        console.log("Forwarding to Quantity Surveyor from Site Officer");
+        setObj["qsInspection.dateGiven"] = now;
+        setObj["qsInspection.name"] = toName;
       } else if (toRole == "site_architect") {
-        billFound.architect.dateGiven = new Date();
-        billFound.architect.name = toName;
+        console.log("Forwarding to Site Architect from Site Officer");
+        setObj["architect.dateGiven"] = now;
+        setObj["architect.name"] = toName;
       } else if (toRole == "site_incharge") {
-        billFound.siteIncharge.dateGiven = new Date();
-        billFound.siteIncharge.name = toName;
+        console.log("Forwarding to Site Incharge from Site Officer");
+        setObj["siteIncharge.dateGiven"] = now;
+        setObj["siteIncharge.name"] = toName;
       } else if (toRole == "site_engineer") {
-        billFound.siteEngineer.dateGiven = new Date();
-        billFound.siteEngineer.name = toName;
+        console.log("Forwarding to Site Engineer from Site Officer");
+        setObj["siteEngineer.dateGiven"] = now;
+        setObj["siteEngineer.name"] = toName;
+      } else if (toRole == "site_officer") {
+        console.log("Forwarding to Site Officer from Site Officer");
+        setObj["remarksBySiteTeam"] = remarks;
+      } else if (toRole == "site_pimo") {
+        console.log("Forwarding to Site PIMO from Site Officer");
+        setObj["siteOfficeDispatch.name"] = toName;
+        setObj["siteOfficeDispatch.dateGiven"] = now;
+        setObj["remarks"] = remarks;
       }
+      billWorkflow = await Bill.findByIdAndUpdate(billId, { $set: setObj }, { new: true });
     } else if (
       fromRole === "site_officer" &&
       toRole === "pimo_mumbai" &&
       action == "forward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Forwarding to PIMO Mumbai from Site Officer");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 2,
             maxCount: Math.max(billFound.maxCount, 2),
+            "pimoMumbai.dateGiven": now,
+            "pimoMumbai.namePIMO": toName,
           },
         },
         { new: true }
@@ -118,97 +205,168 @@ export const changeWorkflowState = async (req, res) => {
       toRole === "qs_mumbai" &&
       action == "forward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Forwarding to QS Mumbai from PIMO Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 3,
             maxCount: Math.max(billFound.maxCount, 3),
+            "qsMumbai.dateGiven": now,
+            "qsMumbai.name": toName,
+            // Also update workflowState
+            "workflowState.currentState": "QS_Mumbai",
+            "workflowState.lastUpdated": now,
+            // Optionally add to workflowState.history
+            $push: {
+              "workflowState.history": {
+                state: "QS_Mumbai",
+                timestamp: now,
+                actor: toName,
+                comments: remarks,
+                action: "forward"
+              }
+            }
           },
         },
         { new: true }
       );
-    } // Case 4: qs_mumbai to pimo_mumbai (step 4)
-    else if (
+    } else if (
       fromRole === "qs_mumbai" &&
       toRole === "pimo_mumbai" &&
       action == "forward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Forwarding to PIMO Mumbai from QS Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 4,
             maxCount: Math.max(billFound.maxCount, 4),
+            "pimoMumbai.dateGiven": now,
+            "pimoMumbai.receivedBy": toName,
+            "workflowState.currentState": "PIMO_Mumbai",
+            "workflowState.lastUpdated": now,
           },
+          $push: {
+            "workflowState.history": {
+              state: "PIMO_Mumbai",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "forward"
+            }
+          }
         },
         { new: true }
       );
-    }
-    // Case 5: pimo_mumbai to trustees (step 5)
-    else if (
+    } else if (
       fromRole === "pimo_mumbai" &&
       toRole === "trustees" &&
       action == "forward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Forwarding to Trustees from PIMO Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 5,
             maxCount: Math.max(billFound.maxCount, 5),
+            "workflowState.currentState": "Trustees",
+            "workflowState.lastUpdated": now,
           },
+          $push: {
+            "workflowState.history": {
+              state: "Trustees",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "forward"
+            }
+          }
         },
         { new: true }
       );
-    }
-    // Case 6: trustees to pimo_mumbai (step 6)
-    else if (
+    } else if (
       fromRole === "trustees" &&
       toRole === "pimo_mumbai" &&
       action == "forward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Forwarding to PIMO Mumbai from Trustees");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 6,
             maxCount: Math.max(billFound.maxCount, 6),
+            "pimoMumbai.dateReceivedFromIT": now,
+            "pimoMumbai.receivedBy": toName,
+            "workflowState.currentState": "PIMO_Mumbai",
+            "workflowState.lastUpdated": now,
           },
+          $push: {
+            "workflowState.history": {
+              state: "PIMO_Mumbai",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "forward"
+            }
+          }
         },
         { new: true }
       );
-    }
-    // Case 7: pimo_mumbai to accounts_department (step 7)
-    else if (
+    } else if (
       fromRole === "pimo_mumbai" &&
       toRole === "accounts_department" &&
       action == "forward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Forwarding to Accounts Department from PIMO Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 7,
             maxCount: Math.max(billFound.maxCount, 7),
+            "accountsDept.dateGiven": now,
+            "accountsDept.givenBy": toName,
+            "accountsDept.remarksAcctsDept": remarks,
+            "workflowState.currentState": "Accounts_Department",
+            "workflowState.lastUpdated": now,
           },
+          $push: {
+            "workflowState.history": {
+              state: "Accounts_Department",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "forward"
+            }
+          }
         },
         { new: true }
       );
-    }
-
-    //reverse
-    else if (
+    } else if (
       fromRole === "pimo_mumbai" &&
       toRole === "site_incharge" &&
       action === "backward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Reverting to Site Incharge from PIMO Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 1,
           },
+          $push: {
+            "workflowState.history": {
+              state: "Site_Incharge",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "backward"
+            }
+          }
         },
         { new: true }
       );
@@ -217,75 +375,118 @@ export const changeWorkflowState = async (req, res) => {
       toRole === "pimo_mumbai" &&
       action === "backward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Reverting to PIMO Mumbai from QS Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 2,
           },
+          $push: {
+            "workflowState.history": {
+              state: "PIMO_Mumbai",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "backward"
+            }
+          }
         },
         { new: true }
       );
-    } // Case 4: qs_mumbai to pimo_mumbai (step 4)
-    else if (
+    } else if (
       fromRole === "pimo_mumbai" &&
       toRole === "qs_mumbai" &&
       action === "backward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Reverting to QS Mumbai from PIMO Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 3,
           },
+          $push: {
+            "workflowState.history": {
+              state: "QS_Mumbai",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "backward"
+            }
+          }
         },
         { new: true }
       );
-    }
-    // Case 5: pimo_mumbai to trustees (step 5)
-    else if (
+    } else if (
       fromRole === "trustees" &&
       toRole === "pimo_mumbai" &&
       action === "backward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Reverting to PIMO Mumbai from Trustees");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 4,
           },
+          $push: {
+            "workflowState.history": {
+              state: "PIMO_Mumbai",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "backward"
+            }
+          }
         },
         { new: true }
       );
-    }
-    // Case 6: trustees to pimo_mumbai (step 6)
-    else if (
+    } else if (
       fromRole === "pimo_mumbai" &&
       toRole === "trutees" &&
       action === "backward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Reverting to Trustees from PIMO Mumbai");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 5,
           },
+          $push: {
+            "workflowState.history": {
+              state: "Trustees",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "backward"
+            }
+          }
         },
         { new: true }
       );
-    }
-    // Case 7: pimo_mumbai to accounts_department (step 7)
-    else if (
+    } else if (
       fromRole === "accounts_department" &&
       toRole === "pimo_mumbai" &&
       action === "backward"
     ) {
-      const billWorkflow = await Bill.findByIdAndUpdate(
+      console.log("Reverting to PIMO Mumbai from Accounts Department");
+      billWorkflow = await Bill.findByIdAndUpdate(
         billId,
         {
           $set: {
             currentCount: 6,
           },
+          $push: {
+            "workflowState.history": {
+              state: "PIMO_Mumbai",
+              timestamp: now,
+              actor: toName,
+              comments: remarks,
+              action: "backward"
+            }
+          }
         },
         { new: true }
       );
@@ -360,7 +561,7 @@ export const getWorkflowStats = async (req, res) => {
     });
 
     // Get average time spent in each state
-    const avgTimeInState = await WorkflowTransition.aggregate([
+    const avgTimeInState = await WorkFlowFinal.aggregate([
       {
         $group: {
           _id: { billId: "$billId", state: "$newState" },
@@ -406,14 +607,14 @@ export const getWorkflowStats = async (req, res) => {
     ]);
 
     // Get recent activity
-    const recentActivity = await WorkflowTransition.find()
+    const recentActivity = await WorkFlowFinal.find()
       .sort({ timestamp: -1 })
       .limit(10)
       .populate("billId", "srNo vendorName vendorNo amount currency")
       .populate("actor", "name role department");
 
     // Get rejection stats
-    const rejectionStats = await WorkflowTransition.aggregate([
+    const rejectionStats = await WorkFlowFinal.aggregate([
       {
         $match: {
           actionType: "reject",
@@ -503,7 +704,7 @@ export const getBillWorkflowHistory = async (req, res) => {
       });
     }
 
-    const transitions = await WorkflowTransition.find({ billId })
+    const transitions = await WorkFlowFinal.find({ billId })
       .sort({ timestamp: 1 })
       .populate("actor", "name role department");
 
@@ -592,7 +793,7 @@ export const getUserWorkflowActivity = async (req, res) => {
       });
     }
 
-    const transitions = await WorkflowTransition.find({ actor: userId })
+    const transitions = await WorkFlowFinal.find({ actor: userId })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
       .populate("billId", "srNo vendorName vendorNo amount currency");
@@ -631,7 +832,7 @@ export const getUserWorkflowActivity = async (req, res) => {
 export const getRolePerformanceMetrics = async (req, res) => {
   try {
     // Get average processing time by role
-    const roleMetrics = await WorkflowTransition.aggregate([
+    const roleMetrics = await WorkFlowFinal.aggregate([
       {
         $match: {
           actionType: "forward", // Only look at forward movements

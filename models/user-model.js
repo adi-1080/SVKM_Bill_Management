@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import RegionMaster from "./region-master-model.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -50,25 +51,16 @@ const userSchema = new mongoose.Schema(
     //one user can have multiple region
     region: {
       type: String,
-      enum: [
-        "MUMBAI",
-        "KHARGHAR",
-        "AHMEDABAD",
-        "BANGALURU",
-        "BHUBANESHWAR",
-        "CHANDIGARH",
-        "DELHI",
-        "NOIDA",
-        "NAGPUR",
-        "GANSOLI",
-        "HOSPITAL",
-        "DHULE",
-        "SHIRPUR",
-        "INDORE",
-        "HYDERABAD",
-        "ALL",
-      ],
       default: "MUMBAI",
+      validate: {
+        validator: async function(value) {
+          if (!value) return false;
+          if (value === "ALL") return true;
+          const region = await RegionMaster.findOne({ name: value.toUpperCase() });
+          return !!region;
+        },
+        message: props => `Region '${props.value}' does not exist in RegionMaster.`
+      }
     },
     lastLogin: {
       type: Date,
