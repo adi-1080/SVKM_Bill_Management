@@ -117,105 +117,42 @@ export const validateWorkflowTransition = async (req, res, next) => {
   try {
     const { id } = req.params;
     const action = req.path.split('/').pop(); // Get the action from URL (advance, revert, reject, recover)
-    
-    // Skip detailed validation for development/testing
-    if (process.env.NODE_ENV === 'development' && req.user.role === 'admin') {
-      return next();
-    }
-    
-    // Get the bill
     const bill = await Bill.findById(id);
     if (!bill) {
       return res.status(404).json({ success: false, message: 'Bill not found' });
     }
-    
-    const currentState = bill.workflowState.currentState;
     const userRole = req.user.role;
-    
-    // Define role-state mappings (which roles can act on which states)
-    const stateRoleMap = {
-      'Site_Officer': ['site_officer', 'admin'],
-      'Site_PIMO': ['site_pimo', 'admin'],
-      'QS_Site': ['qs_site', 'admin'],
-      'PIMO_Mumbai': ['pimo_mumbai', 'admin'],
-      'Directors': ['director', 'admin'],
-      'Accounts': ['accounts', 'admin'],
-      'Completed': ['admin'],
-      'Rejected': ['admin', 'site_officer', 'site_pimo', 'qs_site', 'pimo_mumbai', 'director', 'accounts'] // Any role can recover a rejected bill
+    // Map roles to workflow steps (currentCount)
+    const roleStepMap = {
+      site_officer: 1,
+      quality_inspector: 1,
+      quantity_surveyor: 1,
+      site_architect: 1,
+      site_incharge: 1,
+      site_engineer: 1,
+      site_pimo: 1,
+      pimo_mumbai: 2,
+      qs_mumbai: 3,
+      trustees: 5,
+      accounts_department: 7,
+      admin: 99 // admin can do anything
     };
-    
-    // Check if user can act on the current state
-    if (!stateRoleMap[currentState]?.includes(userRole)) {
-      return res.status(403).json({ 
-        success: false, 
-        message: `User with role '${userRole}' cannot ${action} bills from state '${currentState}'`
-      });
+    const currentCount = bill.currentCount;
+    const userStep = roleStepMap[userRole];
+    if (userStep === undefined) {
+      return res.status(403).json({ success: false, message: `Role '${userRole}' is not allowed to perform workflow transitions.` });
     }
-    
-    // Special handling for recover action
-    if (action === 'recover') {
-      const { targetState } = req.body;
-      
-      if (!targetState) {
-        return res.status(400).json({
-          success: false,
-          message: 'Target state is required for recovery'
-        });
-      }
-      
-      // Determine if user can recover to the target state
-      // For simplicity, we're allowing recovery to any state previous to the rejecting state
-      // or directly to the state that did the rejection
-      
-      // Find the last state before rejection
-      let lastActiveState = null;
-      
-      if (bill.workflowState.history && bill.workflowState.history.length > 0) {
-        // Find the state that did the rejection - go back until we find a non-rejected state
-        for (let i = bill.workflowState.history.length - 1; i >= 0; i--) {
-          if (bill.workflowState.history[i].state !== 'Rejected') {
-            lastActiveState = bill.workflowState.history[i].state;
-            break;
-          }
-        }
-      }
-      
-      // Default to Site_Officer if no history found
-      lastActiveState = lastActiveState || 'Site_Officer';
-      
-      // For Role-based recovery restrictions:
-      // 1. Admin can recover to any state
-      // 2. Each role can only recover to its own state or previous states
-      
-      const stateOrder = ["Site_Officer", "Site_PIMO", "QS_Site", "PIMO_Mumbai", "Directors", "Accounts", "Completed"];
-      const roleMaxStateIndex = {
-        'site_officer': 0,
-        'site_pimo': 1,
-        'qs_site': 2,
-        'pimo_mumbai': 3,
-        'director': 4,
-        'accounts': 5,
-        'admin': 6
-      };
-      
-      const targetStateIndex = stateOrder.indexOf(targetState);
-      const userMaxStateIndex = roleMaxStateIndex[userRole];
-      
-      if (targetStateIndex === -1) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid target state: ${targetState}`
-        });
-      }
-      
-      if (userRole !== 'admin' && targetStateIndex > userMaxStateIndex) {
-        return res.status(403).json({
-          success: false,
-          message: `User with role '${userRole}' cannot recover bill to state '${targetState}'`
-        });
-      }
+    // Admin bypass
+    if (userRole === 'admin') return next();
+    // Forward: user can only forward if their step matches currentCount
+    if (action === 'forward' && currentCount !== userStep) {
+      return res.status(403).json({ success: false, message: `User with role '${userRole}' cannot forward bill at step ${currentCount}` });
     }
-    
+    // Backward: user can only revert if their step is one above currentCount
+    if (action === 'backward' && currentCount !== userStep + 1) {
+      return res.status(403).json({ success: false, message: `User with role '${userRole}' cannot revert bill at step ${currentCount}` });
+    }
+    // Allow reject/recover for all roles at their step
     next();
   } catch (error) {
     console.error('Workflow validation error:', error);

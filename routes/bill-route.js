@@ -27,9 +27,6 @@ router.post('/workflow/:id/recover', validateWorkflowTransition, billController.
 router.get('/workflow/:id/history', billController.getWorkflowHistory);
 router.get('/workflow/state/:state', validateStateAccess, billController.getBillsByWorkflowState);
 
-// Workflow state update
-router.put('/:id/workflow', authenticate, billController.updateWorkflowState);
-
 // Workflow state update 2
 router.patch('/:id/workflow2', authenticate, billController.changeWorkflowState);
 

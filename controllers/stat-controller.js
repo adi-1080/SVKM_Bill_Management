@@ -1,6 +1,6 @@
 import Bill from '../models/bill-model.js';
 import User from '../models/user-model.js';
-import WorkflowTransition from '../models/workflow-transition-model.js';
+import WorkFlowFinal from '../models/workflow-final-model.js';
 import mongoose from 'mongoose';
 
 // Get overall system statistics
@@ -55,7 +55,7 @@ export const getSystemStats = async (req, res) => {
     ]);
     
     // Get recent activity
-    const recentActivity = await WorkflowTransition.find()
+    const recentActivity = await WorkFlowFinal.find()
       .sort({ timestamp: -1 })
       .limit(5)
       .populate('billId', 'srNo vendorName amount')

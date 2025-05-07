@@ -1,5 +1,4 @@
 import Bill from "../models/bill-model.js";
-import WorkflowTransition from "../models/workflow-transition-model.js";
 import mongoose from "mongoose";
 import WorkFlowFinal from "../models/workflow-final-model.js";
 
@@ -360,7 +359,7 @@ export const getWorkflowStats = async (req, res) => {
     });
 
     // Get average time spent in each state
-    const avgTimeInState = await WorkflowTransition.aggregate([
+    const avgTimeInState = await WorkFlowFinal.aggregate([
       {
         $group: {
           _id: { billId: "$billId", state: "$newState" },
@@ -406,14 +405,14 @@ export const getWorkflowStats = async (req, res) => {
     ]);
 
     // Get recent activity
-    const recentActivity = await WorkflowTransition.find()
+    const recentActivity = await WorkFlowFinal.find()
       .sort({ timestamp: -1 })
       .limit(10)
       .populate("billId", "srNo vendorName vendorNo amount currency")
       .populate("actor", "name role department");
 
     // Get rejection stats
-    const rejectionStats = await WorkflowTransition.aggregate([
+    const rejectionStats = await WorkFlowFinal.aggregate([
       {
         $match: {
           actionType: "reject",
@@ -503,7 +502,7 @@ export const getBillWorkflowHistory = async (req, res) => {
       });
     }
 
-    const transitions = await WorkflowTransition.find({ billId })
+    const transitions = await WorkFlowFinal.find({ billId })
       .sort({ timestamp: 1 })
       .populate("actor", "name role department");
 
@@ -592,7 +591,7 @@ export const getUserWorkflowActivity = async (req, res) => {
       });
     }
 
-    const transitions = await WorkflowTransition.find({ actor: userId })
+    const transitions = await WorkFlowFinal.find({ actor: userId })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
       .populate("billId", "srNo vendorName vendorNo amount currency");
@@ -631,7 +630,7 @@ export const getUserWorkflowActivity = async (req, res) => {
 export const getRolePerformanceMetrics = async (req, res) => {
   try {
     // Get average processing time by role
-    const roleMetrics = await WorkflowTransition.aggregate([
+    const roleMetrics = await WorkFlowFinal.aggregate([
       {
         $match: {
           actionType: "forward", // Only look at forward movements

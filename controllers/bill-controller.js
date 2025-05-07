@@ -3,7 +3,6 @@ import {
   buildAmountRangeQuery,
   buildDateRangeQuery,
 } from "../utils/bill-helper.js";
-import WorkflowTransition from '../models/workflow-transition-model.js';
 import VendorMaster from "../models/vendor-master-model.js"
 import RegionMaster from "../models/region-master-model.js";
 import PanStatusMaster from "../models/pan-status-master-model.js";
@@ -265,20 +264,7 @@ const updateBill = async (req, res) => {
       runValidators: true
     });
     
-    // Log the workflow transition
-    await WorkflowTransition.recordTransition(
-      bill, 
-      bill.workflowState.currentState, 
-      req.body.workflowState?.currentState === bill.workflowState.currentState ? 'update' : 
-                  (req.body.workflowState?.currentState === 'Rejected' ? 'reject' : 'forward'),
-      req.user, 
-      req.body.workflowState?.comments || '',
-      { 
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-        device: req.headers['user-agent'] // Could be improved with a proper device detection library
-      }
-    );
+
     res.status(200).json(bill);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -947,99 +933,6 @@ export const getBillsByWorkflowState = async (req, res) => {
   }
 };
 
-// Update workflow state
-export const updateWorkflowState = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { currentState, comments } = req.body;
-    
-    // Validate the workflow state
-    const validStates = [
-      'Draft', 
-      'Pending Review', 
-      'Department Approval', 
-      'Finance Approval', 
-      'Payment Initiated', 
-      'Completed', 
-      'Rejected'
-    ];
-    
-    if (!validStates.includes(currentState)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid workflow state. Must be one of: ${validStates.join(', ')}`
-      });
-    }
-    
-    // Find the bill
-    const bill = await Bill.findById(id);
-    
-    if (!bill) {
-      return res.status(404).json({
-        success: false,
-        message: "Bill not found"
-      });
-    }
-    
-    // Store the previous state
-    const previousState = bill.workflowState.currentState;
-    
-    // Determine action type
-    let actionType = 'update';
-    if (currentState === 'Rejected') {
-      actionType = 'reject';
-    } else if (
-      validStates.indexOf(currentState) > validStates.indexOf(previousState) &&
-      previousState !== currentState
-    ) {
-      actionType = 'forward';
-    } else if (
-      validStates.indexOf(currentState) < validStates.indexOf(previousState) &&
-      previousState !== currentState
-    ) {
-      actionType = 'backward';
-    }
-    
-    // Update the workflow state
-    bill.workflowState = {
-      currentState,
-      previousState: bill.workflowState.currentState,
-      lastUpdated: new Date(),
-      comments: comments || ""
-    };
-    
-    // Save the bill
-    await bill.save();
-    
-    // Log the workflow transition
-    await WorkflowTransition.recordTransition(
-      bill, 
-      previousState, 
-      actionType, 
-      req.user, 
-      comments || '',
-      { 
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-        device: req.headers['user-agent'] // Could be improved with a proper device detection library
-      }
-    );
-    
-    return res.status(200).json({
-      success: true,
-      data: bill,
-      message: `Bill workflow state updated to ${currentState}`
-    });
-    
-  } catch (error) {
-    console.error("Error updating workflow state:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update workflow state",
-      error: error.message
-    });
-  }
-};
 
 // Method to regenerate serial numbers for all bills
 export const regenerateAllSerialNumbers = async (req, res) => {
@@ -1177,7 +1070,6 @@ export default {
   rejectBill,
   getWorkflowHistory,
   getBillsByWorkflowState,
-  updateWorkflowState,
   recoverRejectedBill,
   patchBill,
   regenerateAllSerialNumbers,
