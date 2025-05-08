@@ -9,6 +9,7 @@ import {
   getUserWorkflowActivity,
   getRolePerformanceMetrics,
   getBillHistory,
+  receiveBill,
 } from "../controllers/workflow-controller.js";
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.get("/stats", getWorkflowStats);
 
 router.post("/changeState", changeWorkflowState);
 router.get("/getWorflowHistory/:id", getBillHistory);
+router.get("/receivedBill", receiveBill);
 
 // Bill workflow history - available to all authenticated users
 router.get("/bill/:billId/history", getBillWorkflowHistory);
