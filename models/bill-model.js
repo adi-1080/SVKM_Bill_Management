@@ -202,7 +202,7 @@ const billSchema = new mongoose.Schema(
         //2 api req-pimo (date given no date recieved), main pimo(both)
         pimoMumbai: {
             markReceived:{
-                type: boolean,
+                type: Boolean,
                 default: false,
             },
             dateGiven: { type: Date },
@@ -240,7 +240,7 @@ const billSchema = new mongoose.Schema(
         // same logic as pimo mumbai, 2 apis - one for date given and one for date received
         accountsDept: {
             markReceived:{
-                type: boolean,
+                type: Boolean,
                 default: false,
             },
             dateGiven: { type: Date },
