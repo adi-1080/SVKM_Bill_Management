@@ -12,6 +12,7 @@ router.get('/:id', billController.getBill);
 router.put('/:id', authorize('admin', 'site_officer'), billController.updateBill);
 router.delete('/:id', authorize('admin'), billController.deleteBill);
 
+
 // Bill filtering routes
 router.post('/filter', billController.filterBills);
 router.get('/stats/overview', billController.getBillsStats);
@@ -27,10 +28,12 @@ router.post('/workflow/:id/recover', validateWorkflowTransition, billController.
 router.get('/workflow/:id/history', billController.getWorkflowHistory);
 router.get('/workflow/state/:state', validateStateAccess, billController.getBillsByWorkflowState);
 
-// Workflow state update
-router.put('/:id/workflow', authenticate, billController.updateWorkflowState);
-
 // Workflow state update 2
 router.patch('/:id/workflow2', authenticate, billController.changeWorkflowState);
 
-export default router; 
+// PATCH route for editing bill by id or srNo (id is optional)
+router.patch('/:id?', billController.patchBill);
+//receiveBillByPimoAccounts
+router.post('/receiveBill', billController.receiveBillByPimoAccounts);
+
+export default router;

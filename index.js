@@ -33,6 +33,8 @@ import authRoute from "./routes/auth-route.js";
 import roleRoute from "./routes/role-route.js";
 import reportRoutes from "./routes/report-route.js";
 import worflowRoute from "./routes/workflow-routes.js";
+import masterRoute from "./routes/master-routes.js";
+import sentBillsRoute from "./routes/sentBills-routes.js";
 
 app.use("/auth", authRoute);
 app.use("/bill", billRoute);
@@ -41,8 +43,11 @@ app.use("/vendors", vendorRoute);
 app.use("/stats", statRoute);
 app.use("/report", reportRoute);
 app.use("/role", roleRoute);
+app.use("/sentBills", sentBillsRoute);
+app.use("/master", masterRoute);
 app.use("/api/reports", reportRoutes);
-app.use("/api/worflow", worflowRoute);
+app.use("/workflow", worflowRoute);
+
 
 // Swagger docs route
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

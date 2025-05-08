@@ -1088,6 +1088,7 @@ export const getBillJourney = async (req, res) => {
       report: {
         title: "Bill Journey",
         generatedAt: new Date().toISOString(),
+        //Fix Filter Data
         filterCriteria: {
           dateRange: startDate && endDate ? {
             from: formatDate(new Date(startDate)),
