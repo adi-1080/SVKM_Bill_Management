@@ -13,7 +13,7 @@ const generateToken = (userId) => {
 };
 
 export const registerUser = async (req, res) => {
-  const { name, email, password, contact_no, sap_id } = req.body;
+  const { name, email, password, contact_no, sap_id, role, department, region } = req.body;
 
   try {
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
@@ -32,7 +32,10 @@ export const registerUser = async (req, res) => {
       password: hashedPassword,
       contact_no,
       sap_id,
-      department: req.body.department || "Site_Officer", // Provide a default since it's required
+      // department: req.body.department || "Site_Officer", // Provide a default since it's required
+      department: Array.isArray(department) ? department : [department || "Site_Officer"],
+      role: Array.isArray(req.body.role) ? req.body.role : [req.body.role],
+      region: Array.isArray(region) ? region : [region],
       // username,
     });
 
@@ -46,6 +49,9 @@ export const registerUser = async (req, res) => {
         _id: newUser._id,
         name: newUser.name,
         email: newUser.email,
+        role: newUser.role,
+        department: newUser.department,
+        region: newUser.region,
         // username: newUser.username,
       },
       token,
@@ -87,6 +93,9 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         username: user.username,
+        role: user.role,
+        department: user.department,
+        region: user.region,
       },
       token,
     });
@@ -122,8 +131,14 @@ export const getUserById = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const { name, email, role, currentPassword, newPassword } = req.body;
+    const { name, email, role, region , department, currentPassword, newPassword } = req.body;
     let updateData = { name, email, role };
+
+    if(role) updateData.role = Array.isArray(role) ? role : [role];
+
+    if(department) updateData.department = Array.isArray(department) ? department : [department];
+
+    if(region) updateData.region = Array.isArray(region) ? region : [region];
 
     if (currentPassword && newPassword) {
       const user = await User.findById(req.params.id);
