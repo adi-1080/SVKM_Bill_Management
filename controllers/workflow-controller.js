@@ -643,61 +643,6 @@ export const getBillHistory = async (req, res) => {
   }
 };
 
-export const receiveBill = async (req, res) => {
-  try {
-    const { billId } = req.body;
-    if (!billId) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields",
-      });
-    }
-
-    const user = await User.findById(req.user.id);
-
-    const now = new Date();
-
-    let updateFields = {};
-
-    switch (user.role) {
-      case "pimo_mumbai":
-        updateFields["pimoMumbai.dateReceived"] = now;
-        updateFields["pimoMumbai.receivedBy"] = userName;
-        updateFields["pimoMumbai.markReceived"] = true;
-        break;
-
-      case "accounts_department":
-        updateFields["accountsDept.dateReceived"] = now;
-        updateFields["accountsDept.receivedBy"] = userName;
-        updateFields["accountsDept.markReceived"] = true;
-        break;
-
-      default:
-        return res.status(400).json({
-          success: false,
-          message: "Invalid role for receiving bill",
-        });
-    }
-
-    const updatedBill = await Bill.findByIdAndUpdate(billId, updateFields, {
-      new: true,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Bill received successfully",
-      bill: updatedBill,
-    });
-  } catch (error) {
-    console.error("Error receiving bill:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to receive bill",
-      error: error.message,
-    });
-  }
-};
-
 export const getWorkflowStats = async (req, res) => {
   try {
     // Get counts of bills in each state
