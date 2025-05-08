@@ -3,56 +3,59 @@ import {
   buildAmountRangeQuery,
   buildDateRangeQuery,
 } from "../utils/bill-helper.js";
-import VendorMaster from "../models/vendor-master-model.js"
+import VendorMaster from "../models/vendor-master-model.js";
 import RegionMaster from "../models/region-master-model.js";
 import PanStatusMaster from "../models/pan-status-master-model.js";
 import ComplianceMaster from "../models/compliance-master-model.js";
 import NatureOfWorkMaster from "../models/nature-of-work-master-model.js";
 import CurrencyMaster from "../models/currency-master-model.js";
+import User from "../models/user-model.js";
 
 const getFinancialYearPrefix = (date) => {
   const d = date || new Date();
   let currentYear = d.getFullYear().toString().substr(-2);
-  let nextYear = (parseInt(currentYear) + 1).toString().padStart(2, '0');
+  let nextYear = (parseInt(currentYear) + 1).toString().padStart(2, "0");
 
-  if (d.getMonth() >= 3) { 
+  if (d.getMonth() >= 3) {
     return `${currentYear}${nextYear}`;
   } else {
-    let prevYear = (parseInt(currentYear) - 1).toString().padStart(2, '0');
+    let prevYear = (parseInt(currentYear) - 1).toString().padStart(2, "0");
     return `${prevYear}${currentYear}`;
   }
 };
 
 const createBill = async (req, res) => {
   console.log("Vendor ID being searched:", req.body.vendorName);
-console.log("Vendor ID type:", req.body.vendor);
-  const vendorExists = await VendorMaster.findOne({vendorName: req.body.vendorName});
-  if(!vendorExists){
-    return res.status(404).json({message:"Vendor not found"});
+  console.log("Vendor ID type:", req.body.vendor);
+  const vendorExists = await VendorMaster.findOne({
+    vendorName: req.body.vendorName,
+  });
+  if (!vendorExists) {
+    return res.status(404).json({ message: "Vendor not found" });
   }
   try {
     // Create a base object with all fields initialized to null or empty objects
     const fyPrefix = getFinancialYearPrefix(new Date(req.body.billDate));
     console.log(`[Create] Creating new bill with FY prefix: ${fyPrefix}`);
-    
+
     // Find the highest serial number for this financial year
     const highestSerialBill = await Bill.findOne(
       { srNo: { $regex: `^${fyPrefix}` } },
       { srNo: 1 },
       { sort: { srNo: -1 } }
     );
-      
-    let nextSerial = 1; 
-    
+
+    let nextSerial = 1;
+
     if (highestSerialBill && highestSerialBill.srNo) {
       const serialPart = parseInt(highestSerialBill.srNo.substring(4));
       nextSerial = serialPart + 1;
     }
-    
-    const serialFormatted = nextSerial.toString().padStart(5, '0');
+
+    const serialFormatted = nextSerial.toString().padStart(5, "0");
     const newSrNo = `${fyPrefix}${serialFormatted}`;
     console.log(`[Create] Generated new srNo: ${newSrNo}`);
-    
+
     // Build a bill object with all schema fields, setting null/default for missing fields
     const schemaFields = Object.keys(Bill.schema.paths);
     const billData = {};
@@ -66,7 +69,7 @@ console.log("Vendor ID type:", req.body.vendor);
         billData.workflowState = {
           currentState: "Site_Officer",
           history: [],
-          lastUpdated: new Date()
+          lastUpdated: new Date(),
         };
         continue;
       }
@@ -74,8 +77,13 @@ console.log("Vendor ID type:", req.body.vendor);
         // If panStatus is a string, look up the master
         let panStatusDoc = null;
         if (typeof req.body.panStatus === "string") {
-          panStatusDoc = await PanStatusMaster.findOne({ name: req.body.panStatus.toUpperCase() });
-        } else if (typeof req.body.panStatus === "object" && req.body.panStatus._id) {
+          panStatusDoc = await PanStatusMaster.findOne({
+            name: req.body.panStatus.toUpperCase(),
+          });
+        } else if (
+          typeof req.body.panStatus === "object" &&
+          req.body.panStatus._id
+        ) {
           panStatusDoc = await PanStatusMaster.findById(req.body.panStatus._id);
         }
         billData.panStatus = panStatusDoc ? panStatusDoc._id : null;
@@ -84,9 +92,16 @@ console.log("Vendor ID type:", req.body.vendor);
       if (field === "complianceMaster" && req.body.complianceMaster) {
         let complianceDoc = null;
         if (typeof req.body.complianceMaster === "string") {
-          complianceDoc = await ComplianceMaster.findOne({ complianceStatus: req.body.complianceMaster });
-        } else if (typeof req.body.complianceMaster === "object" && req.body.complianceMaster._id) {
-          complianceDoc = await ComplianceMaster.findById(req.body.complianceMaster._id);
+          complianceDoc = await ComplianceMaster.findOne({
+            complianceStatus: req.body.complianceMaster,
+          });
+        } else if (
+          typeof req.body.complianceMaster === "object" &&
+          req.body.complianceMaster._id
+        ) {
+          complianceDoc = await ComplianceMaster.findById(
+            req.body.complianceMaster._id
+          );
         }
         billData.complianceMaster = complianceDoc ? complianceDoc._id : null;
         continue;
@@ -94,9 +109,16 @@ console.log("Vendor ID type:", req.body.vendor);
       if (field === "natureOfWork" && req.body.natureOfWork) {
         let natureOfWorkDoc = null;
         if (typeof req.body.natureOfWork === "string") {
-          natureOfWorkDoc = await NatureOfWorkMaster.findOne({ natureOfWork: req.body.natureOfWork });
-        } else if (typeof req.body.natureOfWork === "object" && req.body.natureOfWork._id) {
-          natureOfWorkDoc = await NatureOfWorkMaster.findById(req.body.natureOfWork._id);
+          natureOfWorkDoc = await NatureOfWorkMaster.findOne({
+            natureOfWork: req.body.natureOfWork,
+          });
+        } else if (
+          typeof req.body.natureOfWork === "object" &&
+          req.body.natureOfWork._id
+        ) {
+          natureOfWorkDoc = await NatureOfWorkMaster.findById(
+            req.body.natureOfWork._id
+          );
         }
         billData.natureOfWork = natureOfWorkDoc ? natureOfWorkDoc._id : null;
         continue;
@@ -104,18 +126,29 @@ console.log("Vendor ID type:", req.body.vendor);
       if (field === "currency" && req.body.currency) {
         let currencyDoc = null;
         if (typeof req.body.currency === "string") {
-          currencyDoc = await CurrencyMaster.findOne({ currency: req.body.currency });
-        } else if (typeof req.body.currency === "object" && req.body.currency._id) {
+          currencyDoc = await CurrencyMaster.findOne({
+            currency: req.body.currency,
+          });
+        } else if (
+          typeof req.body.currency === "object" &&
+          req.body.currency._id
+        ) {
           currencyDoc = await CurrencyMaster.findById(req.body.currency._id);
         }
         billData.currency = currencyDoc ? currencyDoc._id : null;
         continue;
       }
-      if (field === "compliance206AB" && (req.body.compliance206AB || req.body.compliance206ABMaster)) {
+      if (
+        field === "compliance206AB" &&
+        (req.body.compliance206AB || req.body.compliance206ABMaster)
+      ) {
         let complianceDoc = null;
-        const complianceValue = req.body.compliance206AB || req.body.compliance206ABMaster;
+        const complianceValue =
+          req.body.compliance206AB || req.body.compliance206ABMaster;
         if (typeof complianceValue === "string") {
-          complianceDoc = await ComplianceMaster.findOne({ compliance206AB: complianceValue });
+          complianceDoc = await ComplianceMaster.findOne({
+            compliance206AB: complianceValue,
+          });
         } else if (typeof complianceValue === "object" && complianceValue._id) {
           complianceDoc = await ComplianceMaster.findById(complianceValue._id);
         }
@@ -135,22 +168,29 @@ console.log("Vendor ID type:", req.body.vendor);
 
 const getBills = async (req, res) => {
   try {
-    const filter = req.user.role === 'admin' ? {}: {region: req.user.region};
+    const filter = req.user.role === "admin" ? {} : { region: req.user.region };
     const bills = await Bill.find(filter)
-      .populate('region')
-      .populate('panStatus')
-      .populate('currency')
-      .populate('natureOfWork')
-      .populate('compliance206AB');
+      .populate("region")
+      .populate("panStatus")
+      .populate("currency")
+      .populate("natureOfWork")
+      .populate("compliance206AB");
     // Map region, panStatus, complianceMaster, currency, and natureOfWork to their names
-    const mappedBills = bills.map(bill => {
+    const mappedBills = bills.map((bill) => {
       const billObj = bill.toObject();
       billObj.region = billObj.region?.name || billObj.region || null;
       billObj.panStatus = billObj.panStatus?.name || billObj.panStatus || null;
-      billObj.complianceMaster = billObj.complianceMaster?.compliance206AB || billObj.complianceMaster || null;
+      billObj.complianceMaster =
+        billObj.complianceMaster?.compliance206AB ||
+        billObj.complianceMaster ||
+        null;
       billObj.currency = billObj.currency?.currency || billObj.currency || null;
-      billObj.natureOfWork = billObj.natureOfWork?.natureOfWork || billObj.natureOfWork || null;
-      billObj.compliance206AB = billObj.compliance206AB?.compliance206AB || billObj.compliance206AB || null;
+      billObj.natureOfWork =
+        billObj.natureOfWork?.natureOfWork || billObj.natureOfWork || null;
+      billObj.compliance206AB =
+        billObj.compliance206AB?.compliance206AB ||
+        billObj.compliance206AB ||
+        null;
       return billObj;
     });
     res.status(200).json(mappedBills);
@@ -159,24 +199,86 @@ const getBills = async (req, res) => {
   }
 };
 
+const receiveBillByPimoAccounts = async (req, res) => {
+  try {
+    const { billId } = req.body;
+    if (!billId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    const now = new Date();
+
+    let updateFields = {};
+
+    switch (user.role) {
+      case "pimo_mumbai":
+        updateFields["pimoMumbai.dateReceived"] = now;
+        updateFields["pimoMumbai.receivedBy"] = userName;
+        updateFields["pimoMumbai.markReceived"] = true;
+        break;
+
+      case "accounts_department":
+        updateFields["accountsDept.dateReceived"] = now;
+        updateFields["accountsDept.receivedBy"] = userName;
+        updateFields["accountsDept.markReceived"] = true;
+        break;
+
+      default:
+        return res.status(400).json({
+          success: false,
+          message: "Invalid role for receiving bill",
+        });
+    }
+
+    const updatedBill = await Bill.findByIdAndUpdate(billId, updateFields, {
+      new: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill received successfully",
+      bill: updatedBill,
+    });
+  } catch (error) {
+    console.error("Error receiving bill:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to receive bill",
+      error: error.message,
+    });
+  }
+};
+
 const getBill = async (req, res) => {
   try {
     const bill = await Bill.findById(req.params.id)
-      .populate('region')
-      .populate('panStatus')
-      .populate('currency')
-      .populate('natureOfWork')
-      .populate('compliance206AB');
+      .populate("region")
+      .populate("panStatus")
+      .populate("currency")
+      .populate("natureOfWork")
+      .populate("compliance206AB");
     if (!bill) {
       return res.status(404).json({ message: "Bill not found" });
     }
     const billObj = bill.toObject();
     billObj.region = billObj.region?.name || billObj.region || null;
     billObj.panStatus = billObj.panStatus?.name || billObj.panStatus || null;
-    billObj.complianceMaster = billObj.complianceMaster?.compliance206AB || billObj.complianceMaster || null;
+    billObj.complianceMaster =
+      billObj.complianceMaster?.compliance206AB ||
+      billObj.complianceMaster ||
+      null;
     billObj.currency = billObj.currency?.currency || billObj.currency || null;
-    billObj.natureOfWork = billObj.natureOfWork?.natureOfWork || billObj.natureOfWork || null;
-    billObj.compliance206AB = billObj.compliance206AB?.compliance206AB || billObj.compliance206AB || null;
+    billObj.natureOfWork =
+      billObj.natureOfWork?.natureOfWork || billObj.natureOfWork || null;
+    billObj.compliance206AB =
+      billObj.compliance206AB?.compliance206AB ||
+      billObj.compliance206AB ||
+      null;
     res.status(200).json(billObj);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -193,29 +295,31 @@ const updateBill = async (req, res) => {
 
     // Create a merged object that preserves existing values when not in request body
     const updatedData = {};
-    
+
     // Check if bill date is being changed, which may require regenerating the srNo
     let regenerateSerialNumber = false;
     if (req.body.billDate && existingBill.billDate) {
       const oldDate = new Date(existingBill.billDate);
       const newDate = new Date(req.body.billDate);
-      
+
       // Get financial year prefixes for old and new dates
       const oldPrefix = getFinancialYearPrefix(oldDate);
       const newPrefix = getFinancialYearPrefix(newDate);
-      
+
       // If financial year has changed, we need to regenerate the serial number
       if (oldPrefix !== newPrefix) {
-        console.log(`[Update] Financial year changed from ${oldPrefix} to ${newPrefix}, will regenerate srNo`);
+        console.log(
+          `[Update] Financial year changed from ${oldPrefix} to ${newPrefix}, will regenerate srNo`
+        );
         regenerateSerialNumber = true;
         // Set flag for pre-save hook to regenerate srNo
         existingBill._forceSerialNumberGeneration = true;
       }
     }
-    
+
     // Get all fields from the bill schema
     const schemaFields = Object.keys(Bill.schema.paths);
-    
+
     // For each field in the schema
     for (const field of schemaFields) {
       if (["_id", "createdAt", "updatedAt", "__v"].includes(field)) continue;
@@ -223,8 +327,13 @@ const updateBill = async (req, res) => {
       if (field === "panStatus" && req.body.panStatus) {
         let panStatusDoc = null;
         if (typeof req.body.panStatus === "string") {
-          panStatusDoc = await PanStatusMaster.findOne({ name: req.body.panStatus.toUpperCase() });
-        } else if (typeof req.body.panStatus === "object" && req.body.panStatus._id) {
+          panStatusDoc = await PanStatusMaster.findOne({
+            name: req.body.panStatus.toUpperCase(),
+          });
+        } else if (
+          typeof req.body.panStatus === "object" &&
+          req.body.panStatus._id
+        ) {
           panStatusDoc = await PanStatusMaster.findById(req.body.panStatus._id);
         }
         updatedData.panStatus = panStatusDoc ? panStatusDoc._id : null;
@@ -236,34 +345,36 @@ const updateBill = async (req, res) => {
         updatedData[field] = existingBill[field];
       }
     }
-    
+
     // Special handling for nested objects and arrays to avoid overwrites
     // Handle workflowState specially to preserve history
     if (req.body.workflowState) {
       updatedData.workflowState = {
         ...existingBill.workflowState.toObject(),
         ...req.body.workflowState,
-        history: existingBill.workflowState.history || []
+        history: existingBill.workflowState.history || [],
       };
-      
+
       // If history is provided in the request, append it rather than replace
-      if (req.body.workflowState.history && Array.isArray(req.body.workflowState.history)) {
+      if (
+        req.body.workflowState.history &&
+        Array.isArray(req.body.workflowState.history)
+      ) {
         updatedData.workflowState.history = [
           ...existingBill.workflowState.history,
-          ...req.body.workflowState.history
+          ...req.body.workflowState.history,
         ];
       }
     }
-    
+
     // Set import mode to avoid validation errors for non-required fields
     existingBill.setImportMode(true);
-    
+
     // Update the bill with the merged data
     const bill = await Bill.findByIdAndUpdate(req.params.id, updatedData, {
       new: true,
-      runValidators: true
+      runValidators: true,
     });
-    
 
     res.status(200).json(bill);
   } catch (error) {
@@ -293,9 +404,9 @@ const patchBill = async (req, res) => {
         // Set the id param and call this function again
         req.params.id = billBySrNo._id;
       } else {
-        return res.status(404).json({ 
-          success: false, 
-          message: "Bill with provided Serial Number not found" 
+        return res.status(404).json({
+          success: false,
+          message: "Bill with provided Serial Number not found",
         });
       }
     }
@@ -303,46 +414,48 @@ const patchBill = async (req, res) => {
     // Find the existing bill
     const existingBill = await Bill.findById(req.params.id);
     if (!existingBill) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Bill not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found",
       });
     }
 
     // Process QS-related fields and organize them properly
     organizeQSFields(req.body);
-    
+
     // Check if bill date is being changed, which may require regenerating the srNo
     let regenerateSerialNumber = false;
     if (req.body.billDate && existingBill.billDate) {
       const oldDate = new Date(existingBill.billDate);
       const newDate = new Date(req.body.billDate);
-      
+
       // Get financial year prefixes for old and new dates
       const oldPrefix = getFinancialYearPrefix(oldDate);
       const newPrefix = getFinancialYearPrefix(newDate);
-      
+
       // If financial year has changed, we need to regenerate the serial number
       if (oldPrefix !== newPrefix) {
-        console.log(`[Patch] Financial year changed from ${oldPrefix} to ${newPrefix}, will regenerate srNo`);
+        console.log(
+          `[Patch] Financial year changed from ${oldPrefix} to ${newPrefix}, will regenerate srNo`
+        );
         regenerateSerialNumber = true;
         // Set flag for pre-save hook to regenerate srNo
         existingBill._forceSerialNumberGeneration = true;
-        
+
         // Store old serial number in srNoOld
         existingBill.srNoOld = existingBill.srNo;
       }
     }
-    
+
     // Create an object to hold the updates, only including fields that are in the request
     const updates = {};
-    
+
     // Get all fields from the bill schema
     const schemaFields = Object.keys(Bill.schema.paths);
-    
+
     // Track fields that we've processed to avoid duplicates
     const processedFields = new Set();
-    
+
     // Process top-level fields
     for (const field of Object.keys(req.body)) {
       // Skip fields we'll handle specially
@@ -354,46 +467,62 @@ const patchBill = async (req, res) => {
         if (field === "natureOfWork" && req.body.natureOfWork) {
           let natureOfWorkDoc = null;
           if (typeof req.body.natureOfWork === "string") {
-            natureOfWorkDoc = await NatureOfWorkMaster.findOne({ natureOfWork: req.body.natureOfWork });
-          } else if (typeof req.body.natureOfWork === "object" && req.body.natureOfWork._id) {
-            natureOfWorkDoc = await NatureOfWorkMaster.findById(req.body.natureOfWork._id);
+            natureOfWorkDoc = await NatureOfWorkMaster.findOne({
+              natureOfWork: req.body.natureOfWork,
+            });
+          } else if (
+            typeof req.body.natureOfWork === "object" &&
+            req.body.natureOfWork._id
+          ) {
+            natureOfWorkDoc = await NatureOfWorkMaster.findById(
+              req.body.natureOfWork._id
+            );
           }
           newValue = natureOfWorkDoc ? natureOfWorkDoc._id : null;
         }
         if (field === "currency" && req.body.currency) {
           let currencyDoc = null;
           if (typeof req.body.currency === "string") {
-            currencyDoc = await CurrencyMaster.findOne({ currency: req.body.currency });
-          } else if (typeof req.body.currency === "object" && req.body.currency._id) {
+            currencyDoc = await CurrencyMaster.findOne({
+              currency: req.body.currency,
+            });
+          } else if (
+            typeof req.body.currency === "object" &&
+            req.body.currency._id
+          ) {
             currencyDoc = await CurrencyMaster.findById(req.body.currency._id);
           }
           newValue = currencyDoc ? currencyDoc._id : null;
         }
         const currentValue = existingBill[field];
-        if (currentValue === null || currentValue === undefined || newValue !== null) {
+        if (
+          currentValue === null ||
+          currentValue === undefined ||
+          newValue !== null
+        ) {
           updates[field] = newValue;
         }
         processedFields.add(field);
       }
     }
-    
+
     // Handle nested objects
-    schemaFields.forEach(path => {
-      const pathParts = path.split('.');
+    schemaFields.forEach((path) => {
+      const pathParts = path.split(".");
       if (pathParts.length > 1) {
         const topLevel = pathParts[0];
-        
+
         // If the top-level field is in the request body and is an object
-        if (req.body[topLevel] && typeof req.body[topLevel] === 'object') {
+        if (req.body[topLevel] && typeof req.body[topLevel] === "object") {
           // Initialize the object in updates if not already there
           if (!updates[topLevel]) {
             updates[topLevel] = {};
           }
-          
+
           // Get the nested field
-          const nestedField = pathParts.slice(1).join('.');
+          const nestedField = pathParts.slice(1).join(".");
           const nestedValue = req.body[topLevel][nestedField];
-          
+
           // If the nested field exists in the request
           if (nestedValue !== undefined) {
             // Get the current value
@@ -403,62 +532,65 @@ const patchBill = async (req, res) => {
             } catch (e) {
               currentNestedValue = null;
             }
-            
+
             // Only update if current is null or new is not null
-            if (currentNestedValue === null || currentNestedValue === undefined || nestedValue !== null) {
+            if (
+              currentNestedValue === null ||
+              currentNestedValue === undefined ||
+              nestedValue !== null
+            ) {
               // Set the nested field
               const lastPart = pathParts[pathParts.length - 1];
               let currentObj = updates[topLevel];
-              
+
               for (let i = 1; i < pathParts.length - 1; i++) {
                 if (!currentObj[pathParts[i]]) {
                   currentObj[pathParts[i]] = {};
                 }
                 currentObj = currentObj[pathParts[i]];
               }
-              
+
               currentObj[lastPart] = nestedValue;
             }
           }
-          
+
           processedFields.add(topLevel);
         }
       }
     });
-    
+
     // Set import mode to avoid validation errors
     existingBill.setImportMode(true);
-    
+
     // Only update the bill if there are changes
     if (Object.keys(updates).length === 0) {
       return res.status(200).json({
         success: true,
         message: "No changes to apply",
-        data: existingBill
+        data: existingBill,
       });
     }
-    
-    console.log('Applying updates:', updates);
-    
+
+    console.log("Applying updates:", updates);
+
     // Apply the updates
     const updatedBill = await Bill.findByIdAndUpdate(
       existingBill._id,
       { $set: updates },
       { new: true, runValidators: false }
     );
-    
+
     return res.status(200).json({
       success: true,
       message: "Bill updated successfully",
-      data: updatedBill
+      data: updatedBill,
     });
-    
   } catch (error) {
-    console.error('Error patching bill:', error);
+    console.error("Error patching bill:", error);
     return res.status(400).json({
       success: false,
       message: "Error updating bill",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -467,20 +599,29 @@ const patchBill = async (req, res) => {
 const organizeQSFields = (data) => {
   // Check if we have QS-related fields that need to be organized
   const qsFieldMappings = {
-    "Dt given to QS for Inspection": { target: "qsInspection", property: "dateGiven" },
+    "Dt given to QS for Inspection": {
+      target: "qsInspection",
+      property: "dateGiven",
+    },
     "Name of QS": { target: "qsInspection", property: "name" },
-    "Checked  by QS with Dt of Measurment": { target: "qsMeasurementCheck", property: "dateGiven" },
-    "Given to vendor-Query/Final Inv": { target: "vendorFinalInv", property: "dateGiven" },
+    "Checked  by QS with Dt of Measurment": {
+      target: "qsMeasurementCheck",
+      property: "dateGiven",
+    },
+    "Given to vendor-Query/Final Inv": {
+      target: "vendorFinalInv",
+      property: "dateGiven",
+    },
     "Dt given to QS for COP": { target: "qsCOP", property: "dateGiven" },
-    "Name - QS": { target: "qsCOP", property: "name" }
+    "Name - QS": { target: "qsCOP", property: "name" },
   };
-  
+
   // Initialize the target objects if not already present
   data.qsInspection = data.qsInspection || {};
   data.qsMeasurementCheck = data.qsMeasurementCheck || {};
   data.vendorFinalInv = data.vendorFinalInv || {};
   data.qsCOP = data.qsCOP || {};
-  
+
   // Process each mapping
   Object.entries(qsFieldMappings).forEach(([sourceField, mapping]) => {
     if (sourceField in data) {
@@ -488,17 +629,21 @@ const organizeQSFields = (data) => {
       if (!data[mapping.target]) {
         data[mapping.target] = {};
       }
-      
+
       // Only set if value is not empty
-      if (data[sourceField] !== null && data[sourceField] !== undefined && data[sourceField] !== '') {
+      if (
+        data[sourceField] !== null &&
+        data[sourceField] !== undefined &&
+        data[sourceField] !== ""
+      ) {
         data[mapping.target][mapping.property] = data[sourceField];
       }
-      
+
       // Remove the original field to avoid duplication
       delete data[sourceField];
     }
   });
-  
+
   return data;
 };
 
@@ -534,11 +679,13 @@ const filterBills = async (req, res) => {
     // Exact match filters - with case-insensitive region
     if (status) query.status = status;
     if (natureOfWork) query.natureOfWork = natureOfWork;
-    
+
     // Improved region filtering with dynamic RegionMaster support
     if (region) {
       // Try to find the region in RegionMaster (case-insensitive)
-      const regionDoc = await RegionMaster.findOne({ name: { $regex: `^${region}$`, $options: "i" } });
+      const regionDoc = await RegionMaster.findOne({
+        name: { $regex: `^${region}$`, $options: "i" },
+      });
       if (regionDoc) {
         query.region = regionDoc.name;
       } else {
@@ -546,7 +693,7 @@ const filterBills = async (req, res) => {
         query.region = { $regex: region, $options: "i" };
       }
     }
-    
+
     if (currency) query.currency = currency;
     if (poCreated) query.poCreated = poCreated;
     if (compliance206AB) query.compliance206AB = compliance206AB;
@@ -648,45 +795,45 @@ export const advanceWorkflow = async (req, res) => {
     console.log("advanceWorkflow", req.body);
     const { id } = req.params;
     const { actor, comments } = req.body;
-    
+
     if (!actor) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Actor name is required to advance workflow" 
+      return res.status(400).json({
+        success: false,
+        message: "Actor name is required to advance workflow",
       });
     }
-    
+
     const bill = await Bill.findById(id);
     if (!bill) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Bill not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found",
       });
     }
-    
+
     const advanced = bill.moveToNextState(actor, comments);
     if (!advanced) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Cannot advance further, bill is already at the final stage"
+      return res.status(400).json({
+        success: false,
+        message: "Cannot advance further, bill is already at the final stage",
       });
     }
-    
+
     await bill.save();
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: "Bill advanced to next stage", 
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill advanced to next stage",
       currentState: bill.workflowState.currentState,
-      lastTransition: bill.workflowState.history[bill.workflowState.history.length - 1]
+      lastTransition:
+        bill.workflowState.history[bill.workflowState.history.length - 1],
     });
-    
   } catch (error) {
-    console.error('Workflow advancement error:', error);
-    return res.status(500).json({ 
-      success: false, 
+    console.error("Workflow advancement error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to advance workflow lalalal",
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -696,45 +843,45 @@ export const revertWorkflow = async (req, res) => {
   try {
     const { id } = req.params;
     const { actor, comments } = req.body;
-    
+
     if (!actor) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Actor name is required to revert workflow" 
+      return res.status(400).json({
+        success: false,
+        message: "Actor name is required to revert workflow",
       });
     }
-    
+
     const bill = await Bill.findById(id);
     if (!bill) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Bill not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found",
       });
     }
-    
+
     const reverted = bill.moveToPreviousState(actor, comments);
     if (!reverted) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Cannot revert further, bill is already at the initial stage"
+      return res.status(400).json({
+        success: false,
+        message: "Cannot revert further, bill is already at the initial stage",
       });
     }
-    
+
     await bill.save();
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: "Bill reverted to previous stage", 
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill reverted to previous stage",
       currentState: bill.workflowState.currentState,
-      lastTransition: bill.workflowState.history[bill.workflowState.history.length - 1]
+      lastTransition:
+        bill.workflowState.history[bill.workflowState.history.length - 1],
     });
-    
   } catch (error) {
-    console.error('Workflow reversion error:', error);
-    return res.status(500).json({ 
-      success: false, 
+    console.error("Workflow reversion error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to revert workflow",
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -744,45 +891,45 @@ export const rejectBill = async (req, res) => {
   try {
     const { id } = req.params;
     const { actor, comments } = req.body;
-    
+
     if (!actor) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Actor name is required to reject bill" 
+      return res.status(400).json({
+        success: false,
+        message: "Actor name is required to reject bill",
       });
     }
-    
+
     if (!comments) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Comments are required when rejecting a bill" 
+      return res.status(400).json({
+        success: false,
+        message: "Comments are required when rejecting a bill",
       });
     }
-    
+
     const bill = await Bill.findById(id);
     if (!bill) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Bill not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found",
       });
     }
-    
+
     bill.rejectBill(actor, comments);
     await bill.save();
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: "Bill has been rejected", 
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill has been rejected",
       currentState: bill.workflowState.currentState,
-      lastTransition: bill.workflowState.history[bill.workflowState.history.length - 1]
+      lastTransition:
+        bill.workflowState.history[bill.workflowState.history.length - 1],
     });
-    
   } catch (error) {
-    console.error('Bill rejection error:', error);
-    return res.status(500).json({ 
-      success: false, 
+    console.error("Bill rejection error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to reject bill",
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -792,66 +939,66 @@ export const recoverRejectedBill = async (req, res) => {
   try {
     const { id } = req.params;
     const { actor, comments, targetState } = req.body;
-    
+
     if (!actor) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Actor name is required to recover workflow" 
+      return res.status(400).json({
+        success: false,
+        message: "Actor name is required to recover workflow",
       });
     }
-    
+
     if (!comments) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Comments are required when recovering a bill" 
+      return res.status(400).json({
+        success: false,
+        message: "Comments are required when recovering a bill",
       });
     }
-    
+
     if (!targetState) {
       return res.status(400).json({
         success: false,
-        message: "Target state is required to recover a rejected bill"
+        message: "Target state is required to recover a rejected bill",
       });
     }
-    
+
     const bill = await Bill.findById(id);
     if (!bill) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Bill not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found",
       });
     }
-    
+
     if (bill.workflowState.currentState !== "Rejected") {
       return res.status(400).json({
         success: false,
-        message: "Only bills in 'Rejected' state can be recovered"
+        message: "Only bills in 'Rejected' state can be recovered",
       });
     }
-    
+
     const recovered = bill.recoverFromRejected(targetState, actor, comments);
     if (!recovered) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cannot recover bill to state ${targetState}`
+      return res.status(400).json({
+        success: false,
+        message: `Cannot recover bill to state ${targetState}`,
       });
     }
-    
+
     await bill.save();
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: `Bill recovered from Rejected state to ${targetState}`, 
+
+    return res.status(200).json({
+      success: true,
+      message: `Bill recovered from Rejected state to ${targetState}`,
       currentState: bill.workflowState.currentState,
-      lastTransition: bill.workflowState.history[bill.workflowState.history.length - 1]
+      lastTransition:
+        bill.workflowState.history[bill.workflowState.history.length - 1],
     });
-    
   } catch (error) {
-    console.error('Bill recovery error:', error);
-    return res.status(500).json({ 
-      success: false, 
+    console.error("Bill recovery error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to recover bill from rejected state",
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -860,28 +1007,27 @@ export const recoverRejectedBill = async (req, res) => {
 export const getWorkflowHistory = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const bill = await Bill.findById(id);
     if (!bill) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Bill not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found",
       });
     }
-    
-    return res.status(200).json({ 
-      success: true, 
+
+    return res.status(200).json({
+      success: true,
       currentState: bill.workflowState.currentState,
       history: bill.workflowState.history,
-      lastUpdated: bill.workflowState.lastUpdated
+      lastUpdated: bill.workflowState.lastUpdated,
     });
-    
   } catch (error) {
-    console.error('Workflow history retrieval error:', error);
-    return res.status(500).json({ 
-      success: false, 
+    console.error("Workflow history retrieval error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to retrieve workflow history",
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -890,118 +1036,127 @@ export const getWorkflowHistory = async (req, res) => {
 export const getBillsByWorkflowState = async (req, res) => {
   try {
     const { state } = req.params;
-    
+
     // Validate state is a valid workflow state
     const validStates = [
-      "Site_Officer", 
-      "Site_PIMO", 
-      "QS_Site", 
-      "PIMO_Mumbai", 
-      "Directors", 
-      "Accounts", 
-      "Completed", 
-      "Rejected"
+      "Site_Officer",
+      "Site_PIMO",
+      "QS_Site",
+      "PIMO_Mumbai",
+      "Directors",
+      "Accounts",
+      "Completed",
+      "Rejected",
     ];
-    
+
     if (!validStates.includes(state)) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: "Invalid workflow state",
-        validStates 
+        validStates,
       });
     }
-    
+
     const bills = await Bill.find({
-      "workflowState.currentState": state
+      "workflowState.currentState": state,
     })
-    .select('srNo vendorName vendorNo amount status workflowState.lastUpdated')
-    .sort({ "workflowState.lastUpdated": -1 });
-    
-    return res.status(200).json({ 
-      success: true, 
+      .select(
+        "srNo vendorName vendorNo amount status workflowState.lastUpdated"
+      )
+      .sort({ "workflowState.lastUpdated": -1 });
+
+    return res.status(200).json({
+      success: true,
       count: bills.length,
-      data: bills
+      data: bills,
     });
-    
   } catch (error) {
-    console.error('Bills by state retrieval error:', error);
-    return res.status(500).json({ 
-      success: false, 
+    console.error("Bills by state retrieval error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to retrieve bills by workflow state",
-      error: error.message 
+      error: error.message,
     });
   }
 };
 
-
 // Method to regenerate serial numbers for all bills
 export const regenerateAllSerialNumbers = async (req, res) => {
   try {
-    if (!req.user || req.user.role !== 'admin') {
+    if (!req.user || req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Only administrators can perform this operation"
+        message: "Only administrators can perform this operation",
       });
     }
 
     const bills = await Bill.find({}).sort({ createdAt: 1 });
-    
+
     console.log(`[Regenerate] Found ${bills.length} bills to process`);
-    
+
     // Group bills by financial year
     const billsByFY = {};
-    
+
     // Group each bill by financial year
-    bills.forEach(bill => {
+    bills.forEach((bill) => {
       if (!bill.billDate) {
         console.log(`[Regenerate] Skipping bill ${bill._id} - no bill date`);
         return;
       }
-      
+
       const fyPrefix = getFinancialYearPrefix(new Date(bill.billDate));
-      
+
       if (!billsByFY[fyPrefix]) {
         billsByFY[fyPrefix] = [];
       }
-      
+
       billsByFY[fyPrefix].push(bill);
     });
-    
-    console.log(`[Regenerate] Bills grouped by financial years: ${Object.keys(billsByFY).join(', ')}`);
-    
+
+    console.log(
+      `[Regenerate] Bills grouped by financial years: ${Object.keys(
+        billsByFY
+      ).join(", ")}`
+    );
+
     // Process each financial year group
     const results = {};
     const errors = [];
-    
+
     for (const [fyPrefix, fyBills] of Object.entries(billsByFY)) {
       results[fyPrefix] = {
         totalBills: fyBills.length,
         processedBills: 0,
-        errorCount: 0
+        errorCount: 0,
       };
-      
+
       // Sort bills by date within each FY
       fyBills.sort((a, b) => new Date(a.billDate) - new Date(b.billDate));
-      
+
       // Assign new serial numbers in sequence
       for (let i = 0; i < fyBills.length; i++) {
         const bill = fyBills[i];
-        
+
         try {
           // Store old serial number
           bill.srNoOld = bill.srNo || null;
-          
+
           // Create new serial number
           const serialNumber = i + 1;
-          const serialFormatted = serialNumber.toString().padStart(4, '0');
-          bill.srNo = `${fyPrefix}${serialFormatted}`;g().padStart(5, '0');
+          const serialFormatted = serialNumber.toString().padStart(4, "0");
+          bill.srNo = `${fyPrefix}${serialFormatted}`;
+          g().padStart(5, "0");
           bill.srNo = `${fyPrefix}${serialFormatted}`;
           // Save bill
           // Save bill
           await bill.save();
           results[fyPrefix].processedBills++;
-          
-          console.log(`[Regenerate] Updated bill ${bill._id}: ${bill.srNoOld || 'null'} → ${bill.srNo}`);
+
+          console.log(
+            `[Regenerate] Updated bill ${bill._id}: ${
+              bill.srNoOld || "null"
+            } → ${bill.srNo}`
+          );
         } catch (error) {
           console.error(`[Regenerate] Error updating bill ${bill._id}:`, error);
           errors.push({ id: bill._id, error: error.message });
@@ -1009,53 +1164,49 @@ export const regenerateAllSerialNumbers = async (req, res) => {
         }
       }
     }
-    
+
     return res.status(200).json({
       success: true,
       message: "Serial number regeneration complete",
       results,
-      errors: errors.length > 0 ? errors : null
+      errors: errors.length > 0 ? errors : null,
     });
-    
   } catch (error) {
-    console.error('[Regenerate] Error regenerating serial numbers:', error);
+    console.error("[Regenerate] Error regenerating serial numbers:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to regenerate serial numbers",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
 // Change the workflow state of a bill
 export const changeWorkflowState = async (req, res) => {
-    const { id } = req.params;
-    const { newState } = req.body;
-    const bill = await Bill.findById(id);
-    if (!bill) {
-        return res.status(404).json({
-            success: false,
-            message: "Bill not found"
-        });
-    }
-    bill.workflowState.history.push({
-        state: bill.workflowState.currentState,
-        timestamp: new Date(),
-        actor: req.body.actor,
-        comments: req.body.comments,
-        action: req.body.action || "forward"
+  const { id } = req.params;
+  const { newState } = req.body;
+  const bill = await Bill.findById(id);
+  if (!bill) {
+    return res.status(404).json({
+      success: false,
+      message: "Bill not found",
     });
-    bill.workflowState.currentState = newState;
-    await bill.save();
-    return res.status(200).json({
-        success: true,
-        message: "Workflow state updated successfully",
-        bill
-    });
-}
-
-  
-
+  }
+  bill.workflowState.history.push({
+    state: bill.workflowState.currentState,
+    timestamp: new Date(),
+    actor: req.body.actor,
+    comments: req.body.comments,
+    action: req.body.action || "forward",
+  });
+  bill.workflowState.currentState = newState;
+  await bill.save();
+  return res.status(200).json({
+    success: true,
+    message: "Workflow state updated successfully",
+    bill,
+  });
+};
 
 export default {
   createBill,
@@ -1073,7 +1224,8 @@ export default {
   recoverRejectedBill,
   patchBill,
   regenerateAllSerialNumbers,
-  changeWorkflowState
+  changeWorkflowState,
+  receiveBillByPimoAccounts
 };
 
 //helper functions ignore for now
