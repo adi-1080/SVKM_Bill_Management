@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import RegionMaster from "./region-master-model.js";
+import PanStatusMaster from "./pan-status-master-model.js";
+import ComplianceMaster from "./compliance-master-model.js";
 
 //redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema(
@@ -98,21 +101,11 @@ const billSchema = new mongoose.Schema(
         gstNumber: { type: String, 
             // required: true 
         },
-        compliance206AB: {
-            type: String,
-            // required: true,
-            enum: [
-                "206AB check on website",
-                "2024-Specified Person U/S 206AB",
-                "2024-Non-Specified person U/S 206AB",
-                "2025-Specified Person U/S 206AB",
-                "2025-Non-Specified person U/S 206AB",
-            ],
-        },
+        // Removed compliance206AB field as complianceMaster reference is used instead
         panStatus: {
-            type: String,
-            // required: true,
-            enum: ["PAN operative/N.A.", "PAN inoperative"],
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "PanStatusMaster",
+            required: false, // Set to true if you want to enforce PAN status selection
         },
         poCreated: { type: String, enum: ["Yes", "No"], required: true },
         poNo: { type: String },
@@ -208,6 +201,10 @@ const billSchema = new mongoose.Schema(
         },
         //2 api req-pimo (date given no date recieved), main pimo(both)
         pimoMumbai: {
+            markReceived:{
+                type: boolean,
+                default: false,
+            },
             dateGiven: { type: Date },
             dateReceived: { type: Date }, //not autofill - they will see a tab of bills whose date pimo exists and they can recieve it, tab ka data store - then go to main dashboard
             receivedBy: { type: String },
@@ -242,6 +239,10 @@ const billSchema = new mongoose.Schema(
         },
         // same logic as pimo mumbai, 2 apis - one for date given and one for date received
         accountsDept: {
+            markReceived:{
+                type: boolean,
+                default: false,
+            },
             dateGiven: { type: Date },
             givenBy: { type: String },
             receivedBy: { type: String },
@@ -274,61 +275,26 @@ const billSchema = new mongoose.Schema(
         },
         amount: { type: Number, required: true },
         currency: {
-            type: String,
-            enum: ["INR", "USD", "RMB", "EURO"],
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "CurrencyMaster",
             required: true,
         },
         region: {
             type: String,
-            enum: [
-                "MUMBAI",
-                "KHARGHAR",
-                "AHMEDABAD",
-                "BANGALURU",
-                "BHUBANESHWAR",
-                "CHANDIGARH",
-                "DELHI",
-                "NOIDA",
-                "NAGPUR",
-                "GANSOLI",
-                "HOSPITAL",
-                "DHULE",
-                "SHIRPUR",
-                "INDORE",
-                "HYDERABAD",
-            ],
             required: true,
+            validate: {
+                validator: async function(value) {
+                    if (!value) return false;
+                    // Ensure region exists in RegionMaster
+                    const region = await RegionMaster.findOne({ name: value.toUpperCase() });
+                    return !!region;
+                },
+                message: props => `Region '${props.value}' does not exist in RegionMaster.`
+            }
         },
         natureOfWork: {
-            type: String,
-            enum: [
-                "Proforma Invoice",
-                "Credit note",
-                "Hold/Ret Release",
-                "Direct FI Entry",
-                "Advance/LC/BG",
-                "Petty cash",
-                "Petty Cash",
-                "Imports",
-                "Materials",
-                "Equipments",
-                "IT related",
-                "IBMS",
-                "Consultancy bill",
-                "Civil Works",
-                "STP Work",
-                "MEP Work",
-                "HVAC Work",
-                "Fire Fighting Work",
-                "Petrol/Diesel",
-                "Painting work",
-                "Utility Work",
-                "Site Infra",
-                "Carpentry",
-                "Housekeeping/Security",
-                "Overheads",
-                "Others",
-            ],
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "NatureOfWorkMaster",
             required: true,
         },
         maxCount: {
@@ -338,6 +304,11 @@ const billSchema = new mongoose.Schema(
         currentCount: {
             type: Number,
             default: 1,
+        },
+        compliance206AB: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "ComplianceMaster",
+            required: false
         },
     },
     { timestamps: true }
