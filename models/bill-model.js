@@ -201,6 +201,10 @@ const billSchema = new mongoose.Schema(
         },
         //2 api req-pimo (date given no date recieved), main pimo(both)
         pimoMumbai: {
+            markReceived:{
+                type: boolean,
+                default: false,
+            },
             dateGiven: { type: Date },
             dateReceived: { type: Date }, //not autofill - they will see a tab of bills whose date pimo exists and they can recieve it, tab ka data store - then go to main dashboard
             receivedBy: { type: String },
@@ -235,6 +239,10 @@ const billSchema = new mongoose.Schema(
         },
         // same logic as pimo mumbai, 2 apis - one for date given and one for date received
         accountsDept: {
+            markReceived:{
+                type: boolean,
+                default: false,
+            },
             dateGiven: { type: Date },
             givenBy: { type: String },
             receivedBy: { type: String },

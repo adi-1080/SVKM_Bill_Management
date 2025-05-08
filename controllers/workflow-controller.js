@@ -1,6 +1,7 @@
 import Bill from "../models/bill-model.js";
 import mongoose from "mongoose";
 import WorkFlowFinal from "../models/workflow-final-model.js";
+import User from "../models/user-model.js";
 /* 
 @Krishna
 Fields not covered currently:(Check Logic and update if needed)
@@ -80,434 +81,537 @@ remarksByQSTeam (partially covered)
 remarks (partially covered)
 */
 
-export const changeWorkflowState = async (req, res) => {
+export const changeBatchWorkflowState = async (req, res) => {
   try {
-    const { fromUser, toUser, billId, action, remarks } = req.body;
+    const { fromUser, toUser, billIds, action, remarks } = req.body;
 
     const { id: fromId, name: fromName, role: fromRole } = fromUser;
     const { id: toId, name: toName, role: toRole } = toUser;
 
-    if (!fromUser || !toUser || !billId || !action) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields",
-      });
-    }
-    const billFound = await Bill.findById(billId);
-    if (!billFound) {
-      return res.status(404).json({
-        success: false,
-        message: "Bill not found",
-      });
-    }
-
-    if (billFound.siteStatus == "rejected") {
-      return res.status(400).json({
-        success: false,
-        message: "Bill is already rejected",
-      });
-    }
-
-    const lastWorkflow = await WorkFlowFinal.findOne({ billId }).sort({
-      createdAt: -1,
-    });
-    let newWorkflow = await WorkFlowFinal.create({
-      fromUser: {
-        id: fromId,
-        name: fromName,
-        role: fromRole
-      },
-      toUser: {
-        name: toName,
-        role: toRole
-      },
-      billId,
-      action,
-      remarks,
-      duration: lastWorkflow ? new Date() - lastWorkflow.createdAt : 0,
-    })
-
-    // Use a single populate call with an array for document instance
-    newWorkflow = await newWorkflow.populate([
-      { path: "fromUser.id", select: "name role department" },
-      { path: "toUser.id", select: "name role department" }
-    ]);
-
-    const now = new Date();
-    let billWorkflow = null;
+    // Validate request body
     if (
-      (fromRole == "site_officer" ||
-        fromRole == "quality_inspector" ||
-        fromRole == "quantity_surveyor" ||
-        fromRole == "site_architect" ||
-        fromRole == "site_incharge" ||
-        fromRole == "site_engineer" ||
-        fromRole == "site_pimo") &&
-      (toRole == "quality_inspector" ||
-        toRole == "quantity_surveyor" ||
-        toRole == "site_architect" ||
-        toRole == "site_incharge" ||
-        toRole == "site_engineer" ||
-        toRole == "site_officer" ||
-        toRole == "site_pimo")
+      !fromUser ||
+      !toUser ||
+      !billIds ||
+      !Array.isArray(billIds) ||
+      billIds.length === 0 ||
+      !action
     ) {
-      let setObj = { maxCount: 1, currentCount: 1 };
-      if (toRole == "quality_inspector") {
-        console.log("Forwarding to Quality Inspector from Site Officer");
-        setObj["qualityEngineer.dateGiven"] = now;
-        setObj["qualityEngineer.name"] = toName;
-      } else if (toRole == "quantity_surveyor") {
-        console.log("Forwarding to Quantity Surveyor from Site Officer");
-        setObj["qsInspection.dateGiven"] = now;
-        setObj["qsInspection.name"] = toName;
-      } else if (toRole == "site_architect") {
-        console.log("Forwarding to Site Architect from Site Officer");
-        setObj["architect.dateGiven"] = now;
-        setObj["architect.name"] = toName;
-      } else if (toRole == "site_incharge") {
-        console.log("Forwarding to Site Incharge from Site Officer");
-        setObj["siteIncharge.dateGiven"] = now;
-        setObj["siteIncharge.name"] = toName;
-      } else if (toRole == "site_engineer") {
-        console.log("Forwarding to Site Engineer from Site Officer");
-        setObj["siteEngineer.dateGiven"] = now;
-        setObj["siteEngineer.name"] = toName;
-      } else if (toRole == "site_officer") {
-        console.log("Forwarding to Site Officer from Site Officer");
-        setObj["remarksBySiteTeam"] = remarks;
-      } else if (toRole == "site_pimo") {
-        console.log("Forwarding to Site PIMO from Site Officer");
-        setObj["siteOfficeDispatch.name"] = toName;
-        setObj["siteOfficeDispatch.dateGiven"] = now;
-        setObj["remarks"] = remarks;
-      }
-      billWorkflow = await Bill.findByIdAndUpdate(billId, { $set: setObj }, { new: true });
-    } else if (
-      fromRole === "site_officer" &&
-      toRole === "pimo_mumbai" &&
-      action == "forward"
-    ) {
-      console.log("Forwarding to PIMO Mumbai from Site Officer");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 2,
-            maxCount: Math.max(billFound.maxCount, 2),
-            "pimoMumbai.dateGiven": now,
-            "pimoMumbai.namePIMO": toName,
-          },
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "pimo_mumbai" &&
-      toRole === "qs_mumbai" &&
-      action == "forward"
-    ) {
-      console.log("Forwarding to QS Mumbai from PIMO Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 3,
-            maxCount: Math.max(billFound.maxCount, 3),
-            "qsMumbai.dateGiven": now,
-            "qsMumbai.name": toName,
-            // Also update workflowState
-            "workflowState.currentState": "QS_Mumbai",
-            "workflowState.lastUpdated": now,
-            // Optionally add to workflowState.history
-            $push: {
-              "workflowState.history": {
-                state: "QS_Mumbai",
-                timestamp: now,
-                actor: toName,
-                comments: remarks,
-                action: "forward"
-              }
-            }
-          },
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "qs_mumbai" &&
-      toRole === "pimo_mumbai" &&
-      action == "forward"
-    ) {
-      console.log("Forwarding to PIMO Mumbai from QS Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 4,
-            maxCount: Math.max(billFound.maxCount, 4),
-            "pimoMumbai.dateGiven": now,
-            "pimoMumbai.receivedBy": toName,
-            "workflowState.currentState": "PIMO_Mumbai",
-            "workflowState.lastUpdated": now,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "PIMO_Mumbai",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "forward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "pimo_mumbai" &&
-      toRole === "trustees" &&
-      action == "forward"
-    ) {
-      console.log("Forwarding to Trustees from PIMO Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 5,
-            maxCount: Math.max(billFound.maxCount, 5),
-            "workflowState.currentState": "Trustees",
-            "workflowState.lastUpdated": now,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "Trustees",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "forward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "trustees" &&
-      toRole === "pimo_mumbai" &&
-      action == "forward"
-    ) {
-      console.log("Forwarding to PIMO Mumbai from Trustees");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 6,
-            maxCount: Math.max(billFound.maxCount, 6),
-            "pimoMumbai.dateReceivedFromIT": now,
-            "pimoMumbai.receivedBy": toName,
-            "workflowState.currentState": "PIMO_Mumbai",
-            "workflowState.lastUpdated": now,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "PIMO_Mumbai",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "forward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "pimo_mumbai" &&
-      toRole === "accounts_department" &&
-      action == "forward"
-    ) {
-      console.log("Forwarding to Accounts Department from PIMO Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 7,
-            maxCount: Math.max(billFound.maxCount, 7),
-            "accountsDept.dateGiven": now,
-            "accountsDept.givenBy": toName,
-            "accountsDept.remarksAcctsDept": remarks,
-            "workflowState.currentState": "Accounts_Department",
-            "workflowState.lastUpdated": now,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "Accounts_Department",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "forward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "pimo_mumbai" &&
-      toRole === "site_incharge" &&
-      action === "backward"
-    ) {
-      console.log("Reverting to Site Incharge from PIMO Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 1,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "Site_Incharge",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "backward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "qs_mumbai" &&
-      toRole === "pimo_mumbai" &&
-      action === "backward"
-    ) {
-      console.log("Reverting to PIMO Mumbai from QS Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 2,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "PIMO_Mumbai",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "backward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "pimo_mumbai" &&
-      toRole === "qs_mumbai" &&
-      action === "backward"
-    ) {
-      console.log("Reverting to QS Mumbai from PIMO Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 3,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "QS_Mumbai",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "backward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "trustees" &&
-      toRole === "pimo_mumbai" &&
-      action === "backward"
-    ) {
-      console.log("Reverting to PIMO Mumbai from Trustees");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 4,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "PIMO_Mumbai",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "backward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "pimo_mumbai" &&
-      toRole === "trutees" &&
-      action === "backward"
-    ) {
-      console.log("Reverting to Trustees from PIMO Mumbai");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 5,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "Trustees",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "backward"
-            }
-          }
-        },
-        { new: true }
-      );
-    } else if (
-      fromRole === "accounts_department" &&
-      toRole === "pimo_mumbai" &&
-      action === "backward"
-    ) {
-      console.log("Reverting to PIMO Mumbai from Accounts Department");
-      billWorkflow = await Bill.findByIdAndUpdate(
-        billId,
-        {
-          $set: {
-            currentCount: 6,
-          },
-          $push: {
-            "workflowState.history": {
-              state: "PIMO_Mumbai",
-              timestamp: now,
-              actor: toName,
-              comments: remarks,
-              action: "backward"
-            }
-          }
-        },
-        { new: true }
-      );
-    }
-
-    if (!newWorkflow) {
-      return res.status(500).json({
+      return res.status(400).json({
         success: false,
-        message: "Failed to create workflow transition",
+        message: "Missing required fields or billIds must be a non-empty array",
       });
     }
+
+    // Results tracking
+    const results = {
+      success: [],
+      failed: [],
+    };
+
+    for (const billId of billIds) {
+      try {
+        const billFound = await Bill.findById(billId);
+        if (!billFound) {
+          results.failed.push({
+            billId,
+            message: "Bill not found",
+          });
+          continue;
+        }
+
+        if (billFound.siteStatus === "rejected") {
+          results.failed.push({
+            billId,
+            message: "Bill is already rejected",
+          });
+          continue;
+        }
+
+        const lastWorkflow = await WorkFlowFinal.findOne({ billId }).sort({
+          createdAt: -1,
+        });
+
+        // Create new workflow record
+        let newWorkflow = await WorkFlowFinal.create({
+          fromUser: {
+            id: fromId,
+            name: fromName,
+            role: fromRole,
+          },
+          toUser: {
+            id: toId ? toId : null,
+            name: toName,
+            role: toRole,
+          },
+          billId,
+          action,
+          remarks,
+          duration: lastWorkflow ? new Date() - lastWorkflow.createdAt : 0,
+        });
+
+        // Populate user references
+        newWorkflow = await newWorkflow.populate([
+          { path: "fromUser.id", select: "name role department" },
+          { path: "toUser.id", select: "name role department" },
+        ]);
+
+        const now = new Date();
+        let billWorkflow = null;
+
+        // Site team transitions
+        if (
+          (fromRole == "site_officer" ||
+            fromRole == "quality_inspector" ||
+            fromRole == "quantity_surveyor" ||
+            fromRole == "site_architect" ||
+            fromRole == "site_incharge" ||
+            fromRole == "site_engineer" ||
+            fromRole == "site_pimo") &&
+          (toRole == "quality_inspector" ||
+            toRole == "quantity_surveyor" ||
+            toRole == "site_architect" ||
+            toRole == "site_incharge" ||
+            toRole == "site_engineer" ||
+            toRole == "site_officer" ||
+            toRole == "site_pimo")
+        ) {
+          let setObj = { maxCount: 1, currentCount: 1 };
+          if (toRole == "quality_inspector") {
+            console.log(
+              `Forwarding bill ${billId} to Quality Inspector from Site Officer`
+            );
+            setObj["qualityEngineer.dateGiven"] = now;
+            setObj["qualityEngineer.name"] = toName;
+          } else if (toRole == "quantity_surveyor") {
+            console.log(
+              `Forwarding bill ${billId} to Quantity Surveyor from Site Officer`
+            );
+            setObj["qsInspection.dateGiven"] = now;
+            setObj["qsInspection.name"] = toName;
+          } else if (toRole == "site_architect") {
+            console.log(
+              `Forwarding bill ${billId} to Site Architect from Site Officer`
+            );
+            setObj["architect.dateGiven"] = now;
+            setObj["architect.name"] = toName;
+          } else if (toRole == "site_incharge") {
+            console.log(
+              `Forwarding bill ${billId} to Site Incharge from Site Officer`
+            );
+            setObj["siteIncharge.dateGiven"] = now;
+            setObj["siteIncharge.name"] = toName;
+          } else if (toRole == "site_engineer") {
+            console.log(
+              `Forwarding bill ${billId} to Site Engineer from Site Officer`
+            );
+            setObj["siteEngineer.dateGiven"] = now;
+            setObj["siteEngineer.name"] = toName;
+          } else if (toRole == "site_officer") {
+            console.log(
+              `Forwarding bill ${billId} to Site Officer from Site Officer`
+            );
+            setObj["remarksBySiteTeam"] = remarks;
+          } else if (toRole == "site_pimo") {
+            console.log(
+              `Forwarding bill ${billId} to Site PIMO from Site Officer`
+            );
+            setObj["siteOfficeDispatch.name"] = toName;
+            setObj["siteOfficeDispatch.dateGiven"] = now;
+            setObj["remarks"] = remarks;
+          }
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            { $set: setObj },
+            { new: true }
+          );
+        }
+        // Site Officer to PIMO Mumbai
+        else if (
+          fromRole === "site_officer" &&
+          toRole === "pimo_mumbai" &&
+          action == "forward"
+        ) {
+          console.log(
+            `Forwarding bill ${billId} to PIMO Mumbai from Site Officer`
+          );
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 2,
+                maxCount: Math.max(billFound.maxCount, 2),
+                "pimoMumbai.dateGiven": now,
+                "pimoMumbai.namePIMO": toName,
+              },
+            },
+            { new: true }
+          );
+        }
+        // PIMO Mumbai to QS Mumbai
+        else if (
+          fromRole === "pimo_mumbai" &&
+          toRole === "qs_mumbai" &&
+          action == "forward"
+        ) {
+          console.log(
+            `Forwarding bill ${billId} to QS Mumbai from PIMO Mumbai`
+          );
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 3,
+                maxCount: Math.max(billFound.maxCount, 3),
+                "qsMumbai.dateGiven": now,
+                "qsMumbai.name": toName,
+                // Also update workflowState
+                "workflowState.currentState": "QS_Mumbai",
+                "workflowState.lastUpdated": now,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "QS_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "forward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // QS Mumbai to PIMO Mumbai
+        else if (
+          fromRole === "qs_mumbai" &&
+          toRole === "pimo_mumbai" &&
+          action == "forward"
+        ) {
+          console.log(
+            `Forwarding bill ${billId} to PIMO Mumbai from QS Mumbai`
+          );
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 4,
+                maxCount: Math.max(billFound.maxCount, 4),
+                "pimoMumbai.dateGiven": now,
+                "pimoMumbai.receivedBy": toName,
+                "workflowState.currentState": "PIMO_Mumbai",
+                "workflowState.lastUpdated": now,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "PIMO_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "forward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // PIMO Mumbai to Trustees
+        else if (
+          fromRole === "pimo_mumbai" &&
+          toRole === "trustees" &&
+          action == "forward"
+        ) {
+          console.log(`Forwarding bill ${billId} to Trustees from PIMO Mumbai`);
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 5,
+                maxCount: Math.max(billFound.maxCount, 5),
+                "workflowState.currentState": "Trustees",
+                "workflowState.lastUpdated": now,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "Trustees",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "forward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Trustees to PIMO Mumbai
+        else if (
+          fromRole === "trustees" &&
+          toRole === "pimo_mumbai" &&
+          action == "forward"
+        ) {
+          console.log(`Forwarding bill ${billId} to PIMO Mumbai from Trustees`);
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 6,
+                maxCount: Math.max(billFound.maxCount, 6),
+                "pimoMumbai.dateReceivedFromIT": now,
+                "pimoMumbai.receivedBy": toName,
+                "workflowState.currentState": "PIMO_Mumbai",
+                "workflowState.lastUpdated": now,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "PIMO_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "forward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // PIMO Mumbai to Accounts Department
+        else if (
+          fromRole === "pimo_mumbai" &&
+          toRole === "accounts_department" &&
+          action == "forward"
+        ) {
+          console.log(
+            `Forwarding bill ${billId} to Accounts Department from PIMO Mumbai`
+          );
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 7,
+                maxCount: Math.max(billFound.maxCount, 7),
+                "accountsDept.dateGiven": now,
+                "accountsDept.givenBy": toName,
+                "accountsDept.remarksAcctsDept": remarks,
+                "workflowState.currentState": "Accounts_Department",
+                "workflowState.lastUpdated": now,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "Accounts_Department",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "forward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Backward flow - PIMO Mumbai to Site Incharge
+        else if (
+          fromRole === "pimo_mumbai" &&
+          toRole === "site_incharge" &&
+          action === "backward"
+        ) {
+          console.log(
+            `Reverting bill ${billId} to Site Incharge from PIMO Mumbai`
+          );
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 1,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "Site_Incharge",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "backward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Backward flow - QS Mumbai to PIMO Mumbai
+        else if (
+          fromRole === "qs_mumbai" &&
+          toRole === "pimo_mumbai" &&
+          action === "backward"
+        ) {
+          console.log(`Reverting bill ${billId} to PIMO Mumbai from QS Mumbai`);
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 2,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "PIMO_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "backward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Backward flow - PIMO Mumbai to QS Mumbai
+        else if (
+          fromRole === "pimo_mumbai" &&
+          toRole === "qs_mumbai" &&
+          action === "backward"
+        ) {
+          console.log(`Reverting bill ${billId} to QS Mumbai from PIMO Mumbai`);
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 3,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "QS_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "backward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Backward flow - Trustees to PIMO Mumbai
+        else if (
+          fromRole === "trustees" &&
+          toRole === "pimo_mumbai" &&
+          action === "backward"
+        ) {
+          console.log(`Reverting bill ${billId} to PIMO Mumbai from Trustees`);
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 4,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "PIMO_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "backward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Backward flow - PIMO Mumbai to Trustees (fixed typo in original code)
+        else if (
+          fromRole === "pimo_mumbai" &&
+          toRole === "trustees" &&
+          action === "backward"
+        ) {
+          console.log(`Reverting bill ${billId} to Trustees from PIMO Mumbai`);
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 5,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "Trustees",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "backward",
+                },
+              },
+            },
+            { new: true }
+          );
+        }
+        // Backward flow - Accounts Department to PIMO Mumbai
+        else if (
+          fromRole === "accounts_department" &&
+          toRole === "pimo_mumbai" &&
+          action === "backward"
+        ) {
+          console.log(
+            `Reverting bill ${billId} to PIMO Mumbai from Accounts Department`
+          );
+          billWorkflow = await Bill.findByIdAndUpdate(
+            billId,
+            {
+              $set: {
+                currentCount: 6,
+              },
+              $push: {
+                "workflowState.history": {
+                  state: "PIMO_Mumbai",
+                  timestamp: now,
+                  actor: toName,
+                  comments: remarks,
+                  action: "backward",
+                },
+              },
+            },
+            { new: true }
+          );
+        } else {
+          // If no matching workflow condition was found
+          results.failed.push({
+            billId,
+            message: "No matching workflow transition rule found",
+          });
+          continue;
+        }
+
+        // If workflow update was successful
+        if (billWorkflow) {
+          results.success.push({
+            billId,
+            workflow: newWorkflow,
+          });
+        } else {
+          results.failed.push({
+            billId,
+            message: "Failed to update bill workflow",
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing bill ${billId}:`, error);
+        results.failed.push({
+          billId,
+          message: error.message,
+        });
+      }
+    }
+
+    // Return final result
     return res.status(200).json({
       success: true,
-      message: "Workflow transition created successfully",
-      data: newWorkflow,
+      message: `Processed ${billIds.length} bills: ${results.success.length} successful, ${results.failed.length} failed`,
+      data: {
+        successful: results.success,
+        failed: results.failed,
+      },
     });
   } catch (error) {
-    console.error("Workflow state change error:", error);
+    console.error("Batch workflow state change error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to change workflow state",
+      message: "Failed to process batch workflow state change",
       error: error.message,
     });
   }
@@ -534,6 +638,61 @@ export const getBillHistory = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch workflow history",
+      error: error.message,
+    });
+  }
+};
+
+export const receiveBill = async (req, res) => {
+  try {
+    const { billId } = req.body;
+    if (!billId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    const now = new Date();
+
+    let updateFields = {};
+
+    switch (user.role) {
+      case "pimo_mumbai":
+        updateFields["pimoMumbai.dateReceived"] = now;
+        updateFields["pimoMumbai.receivedBy"] = userName;
+        updateFields["pimoMumbai.markReceived"] = true;
+        break;
+
+      case "accounts_department":
+        updateFields["accountsDept.dateReceived"] = now;
+        updateFields["accountsDept.receivedBy"] = userName;
+        updateFields["accountsDept.markReceived"] = true;
+        break;
+
+      default:
+        return res.status(400).json({
+          success: false,
+          message: "Invalid role for receiving bill",
+        });
+    }
+
+    const updatedBill = await Bill.findByIdAndUpdate(billId, updateFields, {
+      new: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill received successfully",
+      bill: updatedBill,
+    });
+  } catch (error) {
+    console.error("Error receiving bill:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to receive bill",
       error: error.message,
     });
   }
