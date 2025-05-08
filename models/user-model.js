@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema(
     },
     //one user can have multiple role
     role: {
-      type: String,
+      type: [String],
       enum: [
         "admin",
         "site_officer",
@@ -40,18 +40,18 @@ const userSchema = new mongoose.Schema(
         "accounts",
         "viewer",
       ],
-      default: "viewer",
+      default: ["viewer"],
     },
     //one user can have multiple deptartments
     department: {
-      type: String,
+      type: [String],
       enum: ["Site", "PIMO", "QS", "IT", "Accounts", "Management", "Admin"],
       required: true,
     },
     //one user can have multiple region
     region: {
-      type: String,
-      default: "MUMBAI",
+      type: [String],
+      default: ["MUMBAI"],
       validate: {
         validator: async function(value) {
           if (!value) return false;
