@@ -2,6 +2,7 @@
 import Vendor from '../models/vendor-master-model.js';
 import Compliance from '../models/compliance-master-model.js';
 import User from '../models/user-model.js';
+import RegionMaster from '../models/region-master-model.js';
 // The following models are stubs and should be created in models/ as needed
 // import PanStatus from '../models/pan-status-master-model.js';
 // import Region from '../models/region-master-model.js';
