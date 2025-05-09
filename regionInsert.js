@@ -1,7 +1,7 @@
 // insertRegions.js
 import mongoose from "mongoose";
 import RegionMaster from "./models/region-master-model.js";
-
+import { connectDB } from "./utils/db.js";
 const regions = [
   "MUMBAI",
   "KHARGHAR",
@@ -21,7 +21,7 @@ const regions = [
 ];
 
 async function insertRegions() {
-  await mongoose.connect("mongodb+srv://adityagupta5277:kvixFMX3Ctl46i4i@cluster0.jxetv.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0"); // update with your DB
+  await connectDB();
   for (const name of regions) {
     await RegionMaster.updateOne({ name }, { name }, { upsert: true });
   }
