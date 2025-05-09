@@ -4,7 +4,7 @@ import { authenticate } from "../middleware/middleware.js";
 import { authorize } from "../middleware/middleware.js";
 import {
   getWorkflowStats,
-  // changeWorkflowState,
+  changeBatchWorkflowState,
   getBillWorkflowHistory,
   getUserWorkflowActivity,
   getRolePerformanceMetrics,
@@ -20,7 +20,7 @@ router.use(authenticate);
 // Dashboard statistics - available to all authenticated users
 router.get("/stats", getWorkflowStats);
 
-// router.post("/changeState", changeWorkflowState);
+router.post("/changeState", changeBatchWorkflowState);
 router.get("/getWorflowHistory/:id", getBillHistory);
 
 // Bill workflow history - available to all authenticated users
