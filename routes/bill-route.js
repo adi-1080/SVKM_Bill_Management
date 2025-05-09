@@ -1,12 +1,18 @@
 import express from 'express';
 import billController from '../controllers/bill-controller.js';
 import { authenticate, authorize, validateWorkflowTransition, validateStateAccess, authMiddleware } from '../middleware/middleware.js';
+import { multerUpload } from '../utils/multer.js';
 
 const router = express.Router();
 router.use(authenticate);
 
 
-router.post('/', authorize('admin', 'site_officer'), billController.createBill);
+router.post(
+    '/', 
+    multerUpload.array("files", 15), 
+    // authorize('admin', 'site_officer'), 
+    billController.createBill
+);
 router.get('/', authMiddleware, billController.getBills);
 router.get('/:id', billController.getBill);
 router.put('/:id', authorize('admin', 'site_officer'), billController.updateBill);

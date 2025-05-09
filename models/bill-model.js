@@ -3,6 +3,7 @@ import RegionMaster from "./region-master-model.js";
 import PanStatusMaster from "./pan-status-master-model.js";
 import ComplianceMaster from "./compliance-master-model.js";
 
+
 //redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema(
     {
@@ -310,6 +311,13 @@ const billSchema = new mongoose.Schema(
             ref: "ComplianceMaster",
             required: false
         },
+        attachments: [
+            {
+                fileName: { type: String },
+                fileKey: { type: String },
+                fileUrl: { type: String },
+            }
+        ]
     },
     { timestamps: true }
 );

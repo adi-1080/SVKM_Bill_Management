@@ -10,6 +10,7 @@ import ComplianceMaster from "../models/compliance-master-model.js";
 import NatureOfWorkMaster from "../models/nature-of-work-master-model.js";
 import CurrencyMaster from "../models/currency-master-model.js";
 import User from "../models/user-model.js";
+import { s3Upload } from "../utils/s3.js";
 
 const getFinancialYearPrefix = (date) => {
   const d = date || new Date();
@@ -34,6 +35,32 @@ const createBill = async (req, res) => {
     return res.status(404).json({ message: "Vendor not found" });
   }
   try {
+    const attachments = [];
+    if (req.files && req.files.length > 0) {
+      console.log(`Processing ${req.files.length} files for upload`);
+
+      for (const file of req.files) {
+        try {
+          const uploadResult = await s3Upload(file);
+          attachments.push({
+            fileName: uploadResult.fileName,
+            fileKey: uploadResult.fileKey,
+            fileUrl: uploadResult.url,
+          });
+          console.log(`File uploaded: ${uploadResult.fileName}`);
+        } catch (uploadError) {
+          console.error(
+            `Error uploading file ${file.originalname}:`,
+            uploadError
+          );
+          return res.status(404).json({
+            success: false,
+            message: "Files could not be uploaded , please try again",
+          });
+        }
+      }
+    }
+
     // Create a base object with all fields initialized to null or empty objects
     const fyPrefix = getFinancialYearPrefix(new Date(req.body.billDate));
     console.log(`[Create] Creating new bill with FY prefix: ${fyPrefix}`);
@@ -158,9 +185,14 @@ const createBill = async (req, res) => {
       billData[field] = req.body[field] !== undefined ? req.body[field] : null;
     }
     // ...existing code for vendor check, etc...
-    const bill = new Bill(billData);
+
+    const newBillData = {
+      ...billData,
+      attachments,
+    };
+    const bill = new Bill(newBillData);
     await bill.save();
-    res.status(201).json(bill);
+    res.status(201).json({ success: true, bill });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -1225,7 +1257,7 @@ export default {
   patchBill,
   regenerateAllSerialNumbers,
   changeWorkflowState,
-  receiveBillByPimoAccounts
+  receiveBillByPimoAccounts,
 };
 
 //helper functions ignore for now
