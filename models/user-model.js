@@ -53,11 +53,14 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: ["MUMBAI"],
       validate: {
-        validator: async function(value) {
-          if (!value) return false;
-          if (value === "ALL") return true;
-          const region = await RegionMaster.findOne({ name: value.toUpperCase() });
-          return !!region;
+        validator: async function(values) {
+          if(!values || values.length==0) return false;
+          if (values.includes("ALL")) return true;
+          for (const value of values){
+            const region=await RegionMaster.find({name:value.toString().toUpperCase()})
+            if(!region) return false;
+          }
+          return true;
         },
         message: props => `Region '${props.value}' does not exist in RegionMaster.`
       }
