@@ -4,12 +4,12 @@ import { authenticate } from "../middleware/middleware.js";
 import { authorize } from "../middleware/middleware.js";
 import {
   getWorkflowStats,
-  changeWorkflowState,
+  // changeWorkflowState,
   getBillWorkflowHistory,
   getUserWorkflowActivity,
   getRolePerformanceMetrics,
   getBillHistory,
-  receiveBill,
+  // receiveBill,
 } from "../controllers/workflow-controller.js";
 
 const router = express.Router();
@@ -20,7 +20,7 @@ router.use(authenticate);
 // Dashboard statistics - available to all authenticated users
 router.get("/stats", getWorkflowStats);
 
-router.post("/changeState", changeWorkflowState);
+// router.post("/changeState", changeWorkflowState);
 router.get("/getWorflowHistory/:id", getBillHistory);
 
 // Bill workflow history - available to all authenticated users

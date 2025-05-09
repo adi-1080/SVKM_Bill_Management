@@ -35,6 +35,7 @@ import reportRoutes from "./routes/report-route.js";
 import worflowRoute from "./routes/workflow-routes.js";
 import masterRoute from "./routes/master-routes.js";
 import sentBillsRoute from "./routes/sentBills-routes.js";
+import kpiRoute from "./routes/kpi-route.js";
 
 app.use("/auth", authRoute);
 app.use("/bill", billRoute);
@@ -47,6 +48,7 @@ app.use("/sentBills", sentBillsRoute);
 app.use("/master", masterRoute);
 app.use("/api/reports", reportRoutes);
 app.use("/workflow", worflowRoute);
+app.use("/kpi", kpiRoute);
 
 
 // Swagger docs route
