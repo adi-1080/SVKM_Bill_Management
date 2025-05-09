@@ -200,7 +200,7 @@ const createBill = async (req, res) => {
 
 const getBills = async (req, res) => {
   try {
-    const filter = req.user.role === "admin" ? {} : { region: req.user.region };
+    const filter = req.user.role === "admin" ? {} : { region: { $in: req.user.region } };
     const bills = await Bill.find(filter)
       .populate("region")
       .populate("panStatus")
@@ -210,7 +210,8 @@ const getBills = async (req, res) => {
     // Map region, panStatus, complianceMaster, currency, and natureOfWork to their names
     const mappedBills = bills.map((bill) => {
       const billObj = bill.toObject();
-      billObj.region = billObj.region?.name || billObj.region || null;
+      // billObj.region = billObj.region?.name || billObj.region || null;
+      billObj.region = Array.isArray(billObj.region) ? billObj.region.map((r)=> r?.name || r) : billObj.region;
       billObj.panStatus = billObj.panStatus?.name || billObj.panStatus || null;
       billObj.complianceMaster =
         billObj.complianceMaster?.compliance206AB ||
@@ -305,7 +306,7 @@ const getBill = async (req, res) => {
       return res.status(404).json({ message: "Bill not found" });
     }
     const billObj = bill.toObject();
-    billObj.region = billObj.region?.name || billObj.region || null;
+    billObj.region = Array.isArray(billObj.region) ? billObj.region.map((r) => r?.name || r) : billObj.region;
     billObj.panStatus = billObj.panStatus?.name || billObj.panStatus || null;
     billObj.complianceMaster =
       billObj.complianceMaster?.compliance206AB ||
@@ -726,7 +727,7 @@ const filterBills = async (req, res) => {
         name: { $regex: `^${region}$`, $options: "i" },
       });
       if (regionDoc) {
-        query.region = regionDoc.name;
+        query.region = { $in: [regionDoc.name] };
       } else {
         // If not found, fallback to partial match (case-insensitive)
         query.region = { $regex: region, $options: "i" };
