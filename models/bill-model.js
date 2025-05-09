@@ -281,7 +281,7 @@ const billSchema = new mongoose.Schema(
             required: true,
         },
         region: {
-            type: String,
+            type: [String],
             required: true,
             validate: {
                 validator: async function(value) {
@@ -400,11 +400,18 @@ billSchema.pre("save", async function (next) {
 
     // Ensure region is always uppercase for consistency
     if (this.region) {
+      if (Array.isArray(this.region)) {
+        this.region = this.region.map(r => r.toUpperCase());
+        console.log(
+          `[Pre-save] Normalized regions: "${this.region.join(", ")}"`
+        );
+      } else {
         const originalRegion = this.region;
         this.region = this.region.toUpperCase();
         console.log(
-            `[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`
+          `[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`
         );
+      }
     }
 
     // Auto-update payment status to 'paid' when payment date is added
