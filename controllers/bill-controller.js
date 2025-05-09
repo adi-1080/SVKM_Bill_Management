@@ -253,7 +253,7 @@ const receiveBillByPimoAccounts = async (req, res) => {
       });
     }
 
-    if (user.role)
+    if (role)
       switch (role) {
         case "pimo_mumbai":
           updateFields["pimoMumbai.dateReceived"] = now;
