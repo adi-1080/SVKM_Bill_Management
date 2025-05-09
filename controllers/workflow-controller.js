@@ -162,64 +162,99 @@ export const changeBatchWorkflowState = async (req, res) => {
         // Site team transitions
         if (
           (fromRole == "site_officer" ||
-            fromRole == "quality_inspector" ||
-            fromRole == "quantity_surveyor" ||
-            fromRole == "site_architect" ||
-            fromRole == "site_incharge" ||
-            fromRole == "site_engineer" ||
-            fromRole == "site_pimo") &&
-          (toRole == "quality_inspector" ||
-            toRole == "quantity_surveyor" ||
+            fromRole== "site_team") &&
+
+          (toRole == "quality_engineer" ||
+            toRole == "qs_measurement" ||
+            toRole == "qs_cop" ||
             toRole == "site_architect" ||
             toRole == "site_incharge" ||
             toRole == "site_engineer" ||
-            toRole == "site_officer" ||
-            toRole == "site_pimo")
+            toRole == "site_dispatch_team" ||
+            toRole == "migo_entry" ||
+            toRole == "pimo_mumbai")
         ) {
           let setObj = { maxCount: 1, currentCount: 1 };
-          if (toRole == "quality_inspector") {
+          
+          if (toRole == "quality_engineer" && billFound.natureOfWork != "Service") {
             console.log(
               `Forwarding bill ${billId} to Quality Inspector from Site Officer`
             );
             setObj["qualityEngineer.dateGiven"] = now;
             setObj["qualityEngineer.name"] = toName;
-          } else if (toRole == "quantity_surveyor") {
-            console.log(
-              `Forwarding bill ${billId} to Quantity Surveyor from Site Officer`
-            );
-            setObj["qsInspection.dateGiven"] = now;
-            setObj["qsInspection.name"] = toName;
-          } else if (toRole == "site_architect") {
-            console.log(
-              `Forwarding bill ${billId} to Site Architect from Site Officer`
-            );
-            setObj["architect.dateGiven"] = now;
-            setObj["architect.name"] = toName;
-          } else if (toRole == "site_incharge") {
-            console.log(
-              `Forwarding bill ${billId} to Site Incharge from Site Officer`
-            );
-            setObj["siteIncharge.dateGiven"] = now;
-            setObj["siteIncharge.name"] = toName;
-          } else if (toRole == "site_engineer") {
-            console.log(
-              `Forwarding bill ${billId} to Site Engineer from Site Officer`
-            );
-            setObj["siteEngineer.dateGiven"] = now;
-            setObj["siteEngineer.name"] = toName;
-          } else if (toRole == "site_officer") {
-            console.log(
-              `Forwarding bill ${billId} to Site Officer from Site Officer`
-            );
-            setObj["remarksBySiteTeam"] = remarks;
-          } else if (toRole == "site_pimo") {
-            console.log(
-              `Forwarding bill ${billId} to Site PIMO from Site Officer`
-            );
-            setObj["siteOfficeDispatch.name"] = toName;
-            setObj["siteOfficeDispatch.dateGiven"] = now;
-            setObj["remarks"] = remarks;
+          } 
+          else if (toRole == "qs_measurement") {
+            if(billFound.qsMeasurementCheck.dateGiven){
+              console.log(
+                `Forwarding bill ${billId} to Quantity Surveyor for Measurement from Site Officer`
+              );
+              setObj["qsInspection.dateGiven"] = now;
+              setObj["qsInspection.name"] = toName;
+            }
           }
+          else if (toRole == "qs_cop") {
+            
+            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven){
+              console.log(
+                `Forwarding bill ${billId} to Quantity Surveyor for COP from Site Officer`
+              );
+              setObj["qsCOP.dateGiven"] = now;
+              setObj["qsCOP.name"] = toName;
+            }
+          } 
+
+          else if (toRole == "migo_entry") {
+            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
+              
+              console.log(
+                `Forwarding bill ${billId} to MIGO ENtry from Site Officer`
+              );
+              setObj["migoDetails.dateGiven"] = now;
+              setObj["migoDetails.name"]= toName;
+
+            }
+          }
+          else if (toRole == "site_engineer") {
+            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
+              console.log(
+                `Forwarding bill ${billId} to Site Engineer from Site Officer`
+              );
+              setObj["siteEngineer.dateGiven"] = now;
+              setObj["siteEngineer.name"] = toName;
+            }
+          }
+
+          else if (toRole == "site_architect") {
+
+            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.natureOfWork != "Material"){
+              console.log(
+                `Forwarding bill ${billId} to Site Architect from Site Officer`
+              );
+              setObj["architect.dateGiven"] = now;
+              setObj["architect.name"] = toName;
+            }
+          } 
+
+          else if (toRole == "site_incharge") {
+            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven){
+              console.log(
+                `Forwarding bill ${billId} to Site Incharge from Site Officer`
+              );
+              setObj["siteIncharge.dateGiven"] = now;
+              setObj["siteIncharge.name"] = toName;
+            }
+          }  
+
+          else if (toRole == "site_dispatch_team") {
+            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven && billFound.siteIncharge.dateGiven){
+
+              console.log(
+                `Forwarding bill ${billId} to Site Dispatch Team from Site Officer`
+              );
+              setObj["siteOfficeDispatch.name"] = toName;
+              setObj["siteOfficeDispatch.dateGiven"] = now;
+            }
+          } 
           billWorkflow = await Bill.findByIdAndUpdate(
             billId,
             { $set: setObj },
@@ -228,7 +263,7 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Site Officer to PIMO Mumbai
         else if (
-          fromRole === "site_officer" &&
+          fromRole === "site_team" &&
           toRole === "pimo_mumbai" &&
           action == "forward"
         ) {
@@ -315,19 +350,47 @@ export const changeBatchWorkflowState = async (req, res) => {
             { new: true }
           );
         }
+        
         // PIMO Mumbai to Trustees
         else if (
           fromRole === "pimo_mumbai" &&
-          toRole === "trustees" &&
+          toRole === "trustees" || toRole=="it_department" || toRole=="ses_team" || toRole=="pimo_dispatch_team" &&
           action == "forward"
         ) {
-          console.log(`Forwarding bill ${billId} to Trustees from PIMO Mumbai`);
-          billWorkflow = await Bill.findByIdAndUpdate(
+            let setObj = {currentCount: 5, maxCount: Math.max(billFound.maxCount, 5),}
+            if(toRole=="it_department"){
+              console.log(`Forwarding bill ${billId} to IT Department from PIMO Mumbai`);
+              setObj["itDept.dateGiven"] = now;
+              setObj["itDept.name"] = toName;
+            }
+            else if(toRole=="ses_team"){
+              if(billFound.itDept.dateGiven)
+              {
+                console.log(`Forwarding bill ${billId} to SES Team from PIMO Mumbai`);
+                setObj["sesDetails.dateGiven"] = now;
+                setObj["sesDetails.doneBy"] = toName;
+              }
+            }
+            else if(toRole=="pimo_dispatch_team"){
+              if(billFound.sesDetails.dateGiven && billFound.itDept.dateGiven)
+              {
+                console.log(`Forwarding bill ${billId} to PIMO Dispatch Team from PIMO Mumbai`);
+                setObj["pimo.dateReceivedFromIT"] = now;
+                setObj["pimo.dateReceivedFromPIMO"] = now;
+              }
+            }
+            else if(toRole=="trustees"){
+              if(billFound.sesDetails.dateGiven && billFound.itDept.dateGiven && billFound.pimo.dateReceivedFromIT && billFound.pimo.dateReceivedFromPIMO)
+              {
+                console.log(`Forwarding bill ${billId} to Trustees from PIMO Mumbai`);
+                setObj["approvalDetails.directorApproval.dateGiven"] = now;
+              }
+            }
+            billWorkflow = await Bill.findByIdAndUpdate(
             billId,
             {
               $set: {
-                currentCount: 5,
-                maxCount: Math.max(billFound.maxCount, 5),
+                setObj,
                 "workflowState.currentState": "Trustees",
                 "workflowState.lastUpdated": now,
               },
@@ -409,6 +472,44 @@ export const changeBatchWorkflowState = async (req, res) => {
             { new: true }
           );
         }
+        else if( fromRole == "accounts_department" && 
+          (toRole=="booking_team" || toRole=="payment_team") && 
+          action == "forward")
+          {
+            let setObj = {currentCount: 8, maxCount: Math.max(billFound.maxCount, 8),}
+            if(toRole=="booking_team"){
+              console.log(`Forwarding bill ${billId} to Booking Team from Accounts Department`);
+              setObj["accountsDept.invBookingChecking"] = now;
+            }
+            else if(toRole=="payment_team"){
+              if(billFound.accountsDept.invBookingChecking){
+                console.log(`Forwarding bill ${billId} to Payment Team from Accounts Department`);
+                setObj["accountsDept.paymentInstructions"] = now;
+              }
+            }
+            billWorkflow = await Bill.findByIdAndUpdate(
+              billId,
+              {
+                $set: {
+                  setObj,
+                  "workflowState.currentState": "Accounts_Department",
+                  "workflowState.lastUpdated": now,
+                },
+                $push: {
+                  "workflowState.history": {
+                    state: "Accounts_Department",
+                    timestamp: now,
+                    actor: toName,
+                    comments: remarks,
+                    action: "forward",
+                  },
+                },
+              },
+              { new: true }
+            );
+          }
+
+
         // Backward flow - PIMO Mumbai to Site Incharge
         else if (
           fromRole === "pimo_mumbai" &&
