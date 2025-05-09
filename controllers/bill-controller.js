@@ -233,7 +233,7 @@ const getBills = async (req, res) => {
 
 const receiveBillByPimoAccounts = async (req, res) => {
   try {
-    const { billId } = req.body;
+    const { billId, role } = req.body;
     if (!billId) {
       return res.status(400).json({
         success: false,
@@ -246,26 +246,33 @@ const receiveBillByPimoAccounts = async (req, res) => {
     const now = new Date();
 
     let updateFields = {};
-
-    switch (user.role) {
-      case "pimo_mumbai":
-        updateFields["pimoMumbai.dateReceived"] = now;
-        updateFields["pimoMumbai.receivedBy"] = userName;
-        updateFields["pimoMumbai.markReceived"] = true;
-        break;
-
-      case "accounts_department":
-        updateFields["accountsDept.dateReceived"] = now;
-        updateFields["accountsDept.receivedBy"] = userName;
-        updateFields["accountsDept.markReceived"] = true;
-        break;
-
-      default:
-        return res.status(400).json({
-          success: false,
-          message: "Invalid role for receiving bill",
-        });
+    if (!user.role.includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: `User does not have the '${role}' role`,
+      });
     }
+
+    if (user.role)
+      switch (role) {
+        case "pimo_mumbai":
+          updateFields["pimoMumbai.dateReceived"] = now;
+          updateFields["pimoMumbai.receivedBy"] = user.name;
+          updateFields["pimoMumbai.markReceived"] = true;
+          break;
+
+        case "accounts_department":
+          updateFields["accountsDept.dateReceived"] = now;
+          updateFields["accountsDept.receivedBy"] = user.name;
+          updateFields["accountsDept.markReceived"] = true;
+          break;
+
+        default:
+          return res.status(400).json({
+            success: false,
+            message: "Invalid role for receiving bill",
+          });
+      }
 
     const updatedBill = await Bill.findByIdAndUpdate(billId, updateFields, {
       new: true,
