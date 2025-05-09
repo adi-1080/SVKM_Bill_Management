@@ -200,7 +200,7 @@ const createBill = async (req, res) => {
 
 const getBills = async (req, res) => {
   try {
-    const filter = req.user.role === "admin" ? {} : { region: { $in: req.user.region } };
+    const filter = req.user.role.includes("admin") ? {} : { region: { $in: req.user.region } };
     const bills = await Bill.find(filter)
       .populate("region")
       .populate("panStatus")
@@ -210,7 +210,6 @@ const getBills = async (req, res) => {
     // Map region, panStatus, complianceMaster, currency, and natureOfWork to their names
     const mappedBills = bills.map((bill) => {
       const billObj = bill.toObject();
-      // billObj.region = billObj.region?.name || billObj.region || null;
       billObj.region = Array.isArray(billObj.region) ? billObj.region.map((r)=> r?.name || r) : billObj.region;
       billObj.panStatus = billObj.panStatus?.name || billObj.panStatus || null;
       billObj.complianceMaster =
@@ -1123,7 +1122,7 @@ export const getBillsByWorkflowState = async (req, res) => {
 // Method to regenerate serial numbers for all bills
 export const regenerateAllSerialNumbers = async (req, res) => {
   try {
-    if (!req.user || req.user.role !== "admin") {
+    if (!req.user || !req.user.role.includes("admin")) {
       return res.status(403).json({
         success: false,
         message: "Only administrators can perform this operation",
