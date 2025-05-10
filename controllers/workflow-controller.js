@@ -1,3 +1,4 @@
+//test commit
 import Bill from "../models/bill-model.js";
 import mongoose from "mongoose";
 import WorkFlowFinal from "../models/workflow-final-model.js";
@@ -552,8 +553,7 @@ export const changeBatchWorkflowState = async (req, res) => {
                 message: `Error in bill ${billFound.srNo}`,
               });
               continue;
-            }else{
-              
+            } else {
               console.log(
                 `Forwarding bill ${billId} to Payment Team from Accounts Department`
               );
