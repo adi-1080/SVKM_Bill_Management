@@ -281,16 +281,18 @@ const billSchema = new mongoose.Schema(
             required: true,
         },
         region: {
-            type: [String],
-            required: true,
+            type: String,
+            required: [true, 'Region is required'],
             validate: {
                 validator: async function(value) {
                     if (!value) return false;
-                    // Ensure region exists in RegionMaster
                     const region = await RegionMaster.findOne({ name: value.toUpperCase() });
-                    return !!region;
+                    if (!region) {
+                        throw new Error(`Region '${value}' does not exist in RegionMaster`);
+                    }
+                    return true;
                 },
-                message: props => `Region '${props.value}' does not exist in RegionMaster.`
+                message: props => `Region '${props.value}' does not exist in RegionMaster`
             }
         },
         natureOfWork: {

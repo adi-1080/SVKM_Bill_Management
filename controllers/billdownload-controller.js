@@ -380,14 +380,14 @@ const importBills = async (req, res) => {
       success: true,
       message: `Successfully processed ${importResult.totalProcessed} bills`,
       details: {
-        inserted: importResult.inserted?.length || 0,
-        updated: importResult.updated?.length || 0,
+        inserted: importResult.inserted || 0,
+        updated: importResult.updated || 0,
         total: importResult.totalProcessed,
         vendorValidation: skipVendorValidation ? 'skipped' : 'enabled',
         mode: patchOnly ? 'patch-only' : 'normal'
       },
       data: {
-        inserted: importResult.inserted?.map(bill => {
+        inserted: Array.isArray(importResult.inserted) ? importResult.inserted.map(bill => {
           const srNoStr = String(bill.srNo || '');
           return {
             _id: bill._id, 
@@ -395,8 +395,8 @@ const importBills = async (req, res) => {
             excelSrNo: bill.excelSrNo || srNoStr,
             formattedCorrectly: srNoStr.startsWith('2425')
           };
-        }) || [],
-        updated: importResult.updated?.map(bill => {
+        }) : [],
+        updated: Array.isArray(importResult.updated) ? importResult.updated.map(bill => {
           const srNoStr = String(bill.srNo || '');
           return {
             _id: bill._id, 
@@ -404,7 +404,7 @@ const importBills = async (req, res) => {
             excelSrNo: bill.excelSrNo || srNoStr,
             formattedCorrectly: srNoStr.startsWith('2425')
           };
-        }) || []
+        }) : []
       }
     });
   } catch (error) {
@@ -496,7 +496,7 @@ const patchBillsFromExcel = async (req, res) => {
     }
     
     // UPDATED: Combine already existing bills that were updated into the updated count
-    const updatedCount = importResult.updated.length;
+    const updatedCount = importResult.updated || 0;
     const updatedExistingCount = importResult.alreadyExistingBills?.filter(b => b.updating).length || 0;
     const totalUpdated = updatedCount + updatedExistingCount;
     
@@ -510,8 +510,14 @@ const patchBillsFromExcel = async (req, res) => {
       },
       data: {
         updated: [
-          ...importResult.updated.map(bill => ({ _id: bill._id, srNo: bill.srNo })),
-          ...importResult.alreadyExistingBills?.filter(b => b.updating).map(bill => ({ _id: bill._id, srNo: bill.srNo })) || []
+          ...(Array.isArray(importResult.updated) ? importResult.updated.map(bill => ({ 
+            _id: bill._id, 
+            srNo: bill.srNo 
+          })) : []),
+          ...(importResult.alreadyExistingBills?.filter(b => b.updating).map(bill => ({ 
+            _id: bill._id, 
+            srNo: bill.srNo 
+          })) || [])
         ],
         skipped: importResult.nonExistentVendors
       }
