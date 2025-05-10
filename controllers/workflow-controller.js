@@ -85,8 +85,12 @@ export const changeBatchWorkflowState = async (req, res) => {
   try {
     const { fromUser, toUser, billIds, action, remarks } = req.body;
 
-    const { id: fromId, name: fromName, role: fromRole } = fromUser;
-    const { id: toId, name: toName, role: toRole } = toUser;
+    const { id: fromId, name: fromName, role: fromRoles } = fromUser;
+    const { id: toId, name: toName, role: toRoles } = toUser;
+
+    // Convert roles to arrays if they aren't already
+    const fromRoleArray = Array.isArray(fromRoles) ? fromRoles : [fromRoles];
+    const toRoleArray = Array.isArray(toRoles) ? toRoles : [toRoles];
 
     // Validate request body
     if (
@@ -137,12 +141,12 @@ export const changeBatchWorkflowState = async (req, res) => {
           fromUser: {
             id: fromId,
             name: fromName,
-            role: fromRole,
+            role: fromRoleArray,
           },
           toUser: {
             id: toId ? toId : null,
             name: toName,
-            role: toRole,
+            role: toRoleArray,
           },
           billId,
           action,
@@ -161,30 +165,29 @@ export const changeBatchWorkflowState = async (req, res) => {
 
         // Site team transitions
         if (
-          (fromRole == "site_officer" ||
-            fromRole== "site_team") &&
-
-          (toRole == "quality_engineer" ||
-            toRole == "qs_measurement" ||
-            toRole == "qs_cop" ||
-            toRole == "site_architect" ||
-            toRole == "site_incharge" ||
-            toRole == "site_engineer" ||
-            toRole == "site_dispatch_team" ||
-            toRole == "migo_entry" ||
-            toRole == "pimo_mumbai")
-        ) {
+          (fromRoleArray.includes("site_officer") ||
+            fromRoleArray.includes("site_team")) &&
+          (toRoleArray.includes("quality_engineer") ||
+            toRoleArray.includes("qs_measurement") ||
+            toRoleArray.includes("qs_cop") ||
+            toRoleArray.includes("site_dispatch_team") ||
+            toRoleArray.includes("site_architect") ||
+            toRoleArray.includes("site_incharge") ||
+            toRoleArray.includes("site_engineer") ||
+            toRoleArray.includes("migo_entry"))
+        ) 
+        {
           let setObj = { maxCount: 1, currentCount: 1 };
           
-          if (toRole == "quality_engineer" && billFound.natureOfWork != "Service") {
+          if (toRoleArray.includes("quality_engineer" && billFound.natureOfWork != "Service")) {
             console.log(
               `Forwarding bill ${billId} to Quality Inspector from Site Officer`
             );
             setObj["qualityEngineer.dateGiven"] = now;
             setObj["qualityEngineer.name"] = toName;
           } 
-          else if (toRole == "qs_measurement") {
-            if(billFound.qsMeasurementCheck.dateGiven){
+          else if (toRoleArray.includes("qs_measurement")) {
+              if(billFound.qsMeasurementCheck.dateGiven){
               console.log(
                 `Forwarding bill ${billId} to Quantity Surveyor for Measurement from Site Officer`
               );
@@ -192,40 +195,37 @@ export const changeBatchWorkflowState = async (req, res) => {
               setObj["qsInspection.name"] = toName;
             }
           }
-          else if (toRole == "qs_cop") {
-            
-            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven){
+          else if (toRoleArray.includes("qs_cop")) {
+              if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven){
               console.log(
                 `Forwarding bill ${billId} to Quantity Surveyor for COP from Site Officer`
               );
               setObj["qsCOP.dateGiven"] = now;
               setObj["qsCOP.name"] = toName;
             }
-          } 
-
-          else if (toRole == "migo_entry") {
+          }
+          else if (toRoleArray.includes("migo_entry")) {
             if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
               
               console.log(
-                `Forwarding bill ${billId} to MIGO ENtry from Site Officer`
+                  `Forwarding bill ${billId} to MIGO ENtry from Site Officer`
               );
               setObj["migoDetails.dateGiven"] = now;
               setObj["migoDetails.name"]= toName;
 
             }
           }
-          else if (toRole == "site_engineer") {
-            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
+          else if (toRoleArray.includes("site_engineer")) {
+             if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
               console.log(
                 `Forwarding bill ${billId} to Site Engineer from Site Officer`
               );
               setObj["siteEngineer.dateGiven"] = now;
               setObj["siteEngineer.name"] = toName;
             }
-          }
+          } 
 
-          else if (toRole == "site_architect") {
-
+          else if (toRoleArray.includes("site_architect")) {
             if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.natureOfWork != "Material"){
               console.log(
                 `Forwarding bill ${billId} to Site Architect from Site Officer`
@@ -233,19 +233,19 @@ export const changeBatchWorkflowState = async (req, res) => {
               setObj["architect.dateGiven"] = now;
               setObj["architect.name"] = toName;
             }
-          } 
 
-          else if (toRole == "site_incharge") {
-            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven){
+          } else if (toRoleArray.includes("site_incharge")) {
+            f(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven)
+            {
               console.log(
                 `Forwarding bill ${billId} to Site Incharge from Site Officer`
               );
               setObj["siteIncharge.dateGiven"] = now;
               setObj["siteIncharge.name"] = toName;
             }
-          }  
 
-          else if (toRole == "site_dispatch_team") {
+          } 
+          else if (toRoleArray.includes("site_dispatch_team")) {
             if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven && billFound.siteIncharge.dateGiven){
 
               console.log(
@@ -261,10 +261,12 @@ export const changeBatchWorkflowState = async (req, res) => {
             { new: true }
           );
         }
+        
+
         // Site Officer to PIMO Mumbai
         else if (
-          fromRole === "site_team" &&
-          toRole === "pimo_mumbai" &&
+          fromRoleArray.includes("site_team") &&
+          toRoleArray.includes("pimo_mumbai") &&
           action == "forward"
         ) {
           console.log(
@@ -285,8 +287,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // PIMO Mumbai to QS Mumbai
         else if (
-          fromRole === "pimo_mumbai" &&
-          toRole === "qs_mumbai" &&
+          fromRoleArray.includes("pimo_mumbai") &&
+          toRoleArray.includes("qs_mumbai") &&
           action == "forward"
         ) {
           console.log(
@@ -319,8 +321,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // QS Mumbai to PIMO Mumbai
         else if (
-          fromRole === "qs_mumbai" &&
-          toRole === "pimo_mumbai" &&
+          fromRoleArray.includes("qs_mumbai") &&
+          toRoleArray.includes("pimo_mumbai") &&
           action == "forward"
         ) {
           console.log(
@@ -353,17 +355,17 @@ export const changeBatchWorkflowState = async (req, res) => {
         
         // PIMO Mumbai to Trustees
         else if (
-          fromRole === "pimo_mumbai" &&
-          toRole === "trustees" || toRole=="it_department" || toRole=="ses_team" || toRole=="pimo_dispatch_team" &&
+          fromRoleArray.includes("pimo_mumbai") &&
+          toRoleArray.includes("trustees" || toRoleArray.includes("it_department") || toRoleArray.includes("ses_team") || toRoleArray.includes("pimo_dispatch_team")) &&
           action == "forward"
         ) {
             let setObj = {currentCount: 5, maxCount: Math.max(billFound.maxCount, 5),}
-            if(toRole=="it_department"){
+            if(toRoleArray.includes("it_department")){
               console.log(`Forwarding bill ${billId} to IT Department from PIMO Mumbai`);
               setObj["itDept.dateGiven"] = now;
               setObj["itDept.name"] = toName;
             }
-            else if(toRole=="ses_team"){
+            else if(toRoleArray.includes("ses_team")){
               if(billFound.itDept.dateGiven)
               {
                 console.log(`Forwarding bill ${billId} to SES Team from PIMO Mumbai`);
@@ -371,7 +373,7 @@ export const changeBatchWorkflowState = async (req, res) => {
                 setObj["sesDetails.doneBy"] = toName;
               }
             }
-            else if(toRole=="pimo_dispatch_team"){
+            else if(toRoleArray.inclues("pimo_dispatch_team")){
               if(billFound.sesDetails.dateGiven && billFound.itDept.dateGiven)
               {
                 console.log(`Forwarding bill ${billId} to PIMO Dispatch Team from PIMO Mumbai`);
@@ -379,7 +381,7 @@ export const changeBatchWorkflowState = async (req, res) => {
                 setObj["pimo.dateReceivedFromPIMO"] = now;
               }
             }
-            else if(toRole=="trustees"){
+            else if(toRoleArray.includes("trustees")){
               if(billFound.sesDetails.dateGiven && billFound.itDept.dateGiven && billFound.pimo.dateReceivedFromIT && billFound.pimo.dateReceivedFromPIMO)
               {
                 console.log(`Forwarding bill ${billId} to Trustees from PIMO Mumbai`);
@@ -409,8 +411,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Trustees to PIMO Mumbai
         else if (
-          fromRole === "trustees" &&
-          toRole === "pimo_mumbai" &&
+          fromRoleArray.includes("trustees") &&
+          toRoleArray.includes("pimo_mumbai") &&
           action == "forward"
         ) {
           console.log(`Forwarding bill ${billId} to PIMO Mumbai from Trustees`);
@@ -440,8 +442,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // PIMO Mumbai to Accounts Department
         else if (
-          fromRole === "pimo_mumbai" &&
-          toRole === "accounts_department" &&
+          fromRoleArray.includes("pimo_mumbai") &&
+          toRoleArray.includes("accounts_department") &&
           action == "forward"
         ) {
           console.log(
@@ -472,16 +474,16 @@ export const changeBatchWorkflowState = async (req, res) => {
             { new: true }
           );
         }
-        else if( fromRole == "accounts_department" && 
-          (toRole=="booking_team" || toRole=="payment_team") && 
+        else if( fromRoleArray.includes("accounts_department") && 
+          (toRoleArray.includes("booking_team") || toRoleArray.includes("payment_team")) && 
           action == "forward")
           {
             let setObj = {currentCount: 8, maxCount: Math.max(billFound.maxCount, 8),}
-            if(toRole=="booking_team"){
+            if(toRoleArray.includes("booking_team")){
               console.log(`Forwarding bill ${billId} to Booking Team from Accounts Department`);
               setObj["accountsDept.invBookingChecking"] = now;
             }
-            else if(toRole=="payment_team"){
+            else if(toRoleArray.includes("payment_team")){
               if(billFound.accountsDept.invBookingChecking){
                 console.log(`Forwarding bill ${billId} to Payment Team from Accounts Department`);
                 setObj["accountsDept.paymentInstructions"] = now;
@@ -512,8 +514,8 @@ export const changeBatchWorkflowState = async (req, res) => {
 
         // Backward flow - PIMO Mumbai to Site Incharge
         else if (
-          fromRole === "pimo_mumbai" &&
-          toRole === "site_incharge" &&
+          fromRoleArray.includes("pimo_mumbai") &&
+          toRoleArray.includes("site_incharge") &&
           action === "backward"
         ) {
           console.log(
@@ -540,8 +542,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Backward flow - QS Mumbai to PIMO Mumbai
         else if (
-          fromRole === "qs_mumbai" &&
-          toRole === "pimo_mumbai" &&
+          fromRoleArray.includes("qs_mumbai") &&
+          toRoleArray.includes("pimo_mumbai") &&
           action === "backward"
         ) {
           console.log(`Reverting bill ${billId} to PIMO Mumbai from QS Mumbai`);
@@ -566,8 +568,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Backward flow - PIMO Mumbai to QS Mumbai
         else if (
-          fromRole === "pimo_mumbai" &&
-          toRole === "qs_mumbai" &&
+          fromRoleArray.includes("pimo_mumbai") &&
+          toRoleArray.includes("qs_mumbai") &&
           action === "backward"
         ) {
           console.log(`Reverting bill ${billId} to QS Mumbai from PIMO Mumbai`);
@@ -592,8 +594,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Backward flow - Trustees to PIMO Mumbai
         else if (
-          fromRole === "trustees" &&
-          toRole === "pimo_mumbai" &&
+          fromRoleArray.includes("trustees") &&
+          toRoleArray.includes("pimo_mumbai") &&
           action === "backward"
         ) {
           console.log(`Reverting bill ${billId} to PIMO Mumbai from Trustees`);
@@ -618,8 +620,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Backward flow - PIMO Mumbai to Trustees (fixed typo in original code)
         else if (
-          fromRole === "pimo_mumbai" &&
-          toRole === "trustees" &&
+          fromRoleArray.includes("pimo_mumbai") &&
+          toRoleArray.includes("trustees") &&
           action === "backward"
         ) {
           console.log(`Reverting bill ${billId} to Trustees from PIMO Mumbai`);
@@ -644,8 +646,8 @@ export const changeBatchWorkflowState = async (req, res) => {
         }
         // Backward flow - Accounts Department to PIMO Mumbai
         else if (
-          fromRole === "accounts_department" &&
-          toRole === "pimo_mumbai" &&
+          fromRoleArray.includes("accounts_department") &&
+          toRoleArray.includes("pimo_mumbai") &&
           action === "backward"
         ) {
           console.log(
