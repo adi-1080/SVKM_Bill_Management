@@ -3,6 +3,7 @@ import RegionMaster from "./region-master-model.js";
 import PanStatusMaster from "./pan-status-master-model.js";
 import ComplianceMaster from "./compliance-master-model.js";
 
+
 //redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema(
     {
@@ -202,7 +203,7 @@ const billSchema = new mongoose.Schema(
         //2 api req-pimo (date given no date recieved), main pimo(both)
         pimoMumbai: {
             markReceived:{
-                type: boolean,
+                type: Boolean,
                 default: false,
             },
             dateGiven: { type: Date },
@@ -240,7 +241,7 @@ const billSchema = new mongoose.Schema(
         // same logic as pimo mumbai, 2 apis - one for date given and one for date received
         accountsDept: {
             markReceived:{
-                type: boolean,
+                type: Boolean,
                 default: false,
             },
             dateGiven: { type: Date },
@@ -281,15 +282,17 @@ const billSchema = new mongoose.Schema(
         },
         region: {
             type: String,
-            required: true,
+            required: [true, 'Region is required'],
             validate: {
                 validator: async function(value) {
                     if (!value) return false;
-                    // Ensure region exists in RegionMaster
                     const region = await RegionMaster.findOne({ name: value.toUpperCase() });
-                    return !!region;
+                    if (!region) {
+                        throw new Error(`Region '${value}' does not exist in RegionMaster`);
+                    }
+                    return true;
                 },
-                message: props => `Region '${props.value}' does not exist in RegionMaster.`
+                message: props => `Region '${props.value}' does not exist in RegionMaster`
             }
         },
         natureOfWork: {
@@ -310,6 +313,13 @@ const billSchema = new mongoose.Schema(
             ref: "ComplianceMaster",
             required: false
         },
+        attachments: [
+            {
+                fileName: { type: String },
+                fileKey: { type: String },
+                fileUrl: { type: String },
+            }
+        ]
     },
     { timestamps: true }
 );
@@ -392,11 +402,18 @@ billSchema.pre("save", async function (next) {
 
     // Ensure region is always uppercase for consistency
     if (this.region) {
+      if (Array.isArray(this.region)) {
+        this.region = this.region.map(r => r.toUpperCase());
+        console.log(
+          `[Pre-save] Normalized regions: "${this.region.join(", ")}"`
+        );
+      } else {
         const originalRegion = this.region;
         this.region = this.region.toUpperCase();
         console.log(
-            `[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`
+          `[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`
         );
+      }
     }
 
     // Auto-update payment status to 'paid' when payment date is added

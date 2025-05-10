@@ -380,14 +380,14 @@ const importBills = async (req, res) => {
       success: true,
       message: `Successfully processed ${importResult.totalProcessed} bills`,
       details: {
-        inserted: importResult.inserted?.length || 0,
-        updated: importResult.updated?.length || 0,
+        inserted: importResult.inserted || 0,
+        updated: importResult.updated || 0,
         total: importResult.totalProcessed,
         vendorValidation: skipVendorValidation ? 'skipped' : 'enabled',
         mode: patchOnly ? 'patch-only' : 'normal'
       },
       data: {
-        inserted: importResult.inserted?.map(bill => {
+        inserted: Array.isArray(importResult.inserted) ? importResult.inserted.map(bill => {
           const srNoStr = String(bill.srNo || '');
           return {
             _id: bill._id, 
@@ -395,8 +395,8 @@ const importBills = async (req, res) => {
             excelSrNo: bill.excelSrNo || srNoStr,
             formattedCorrectly: srNoStr.startsWith('2425')
           };
-        }) || [],
-        updated: importResult.updated?.map(bill => {
+        }) : [],
+        updated: Array.isArray(importResult.updated) ? importResult.updated.map(bill => {
           const srNoStr = String(bill.srNo || '');
           return {
             _id: bill._id, 
@@ -404,7 +404,7 @@ const importBills = async (req, res) => {
             excelSrNo: bill.excelSrNo || srNoStr,
             formattedCorrectly: srNoStr.startsWith('2425')
           };
-        }) || []
+        }) : []
       }
     });
   } catch (error) {
@@ -416,75 +416,6 @@ const importBills = async (req, res) => {
     });
   }
 };
-
-// Maintain headerMapping here for direct access in patchBillsFromExcel
-const headerMapping = {
-  "Sr No": "srNo",
-  "Sr no Old": "srNoOld",
-  "Type of inv": "typeOfInv",
-  "Region": "region",
-  "Project Description": "projectDescription",
-  "Vendor no": "vendorNo",
-  "Vendor Name": "vendorName",
-  "GST Number": "gstNumber",
-  "206AB Compliance": "compliance206AB",
-  "PAN Status": "panStatus",
-  "If PO created??": "poCreated",
-  "PO no": "poNo",
-  "PO Dt": "poDate",
-  "PO Amt": "poAmt",
-  "Proforma Inv No": "proformaInvNo",
-  "Proforma Inv Dt": "proformaInvDate",
-  "Proforma Inv Amt": "proformaInvAmt",
-  "Proforma Inv Recd at site": "proformaInvRecdAtSite",
-  "Proforma Inv Recd by": "proformaInvRecdBy",
-  "Tax Inv no": "taxInvNo",
-  "Tax Inv Dt": "taxInvDate",
-  "Currency": "currency",
-  "Tax Inv Amt": "taxInvAmt",
-  "Tax Inv Amt ": "taxInvAmt",
-  "Tax Inv Recd at site": "taxInvRecdAtSite",
-  "Tax Inv Recd by": "taxInvRecdBy",
-  "Department": "department",
-  "Remarks by Site Team": "remarksBySiteTeam",
-  "Attachment": "attachment",
-  "Attachment Type": "attachmentType",
-  "Advance Dt": "advanceDate",
-  "Advance Amt": "advanceAmt",
-  "Advance Percentage": "advancePercentage",
-  "Advance Percentage ": "advancePercentage",
-  "Adv request entered by": "advRequestEnteredBy",
-  "Dt given to Quality Engineer": "qualityEngineer.dateGiven",
-  "Name of Quality Engineer": "qualityEngineer.name",
-  "Dt given to QS for Inspection": "qsInspection.dateGiven",
-  "Name of QS": "qsInspection.name",
-  "Checked by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven",
-  "Checked  by QS with Dt of Measurment": "qsMeasurementCheck.dateGiven",
-  "Given to vendor-Query/Final Inv": "vendorFinalInv.dateGiven",
-  "Dt given to QS for COP": "qsCOP.dateGiven",
-  "Name - QS": "qsCOP.name",
-  "COP Dt": "copDetails.date",
-  "COP Amt": "copDetails.amount",
-  "Remarks by QS Team": "remarksByQSTeam",
-  "Dt given for MIGO": "migoDetails.dateGiven",
-  "MIGO no": "migoDetails.no",
-  "MIGO Dt": "migoDetails.date",
-  "MIGO Amt": "migoDetails.amount",
-  "Migo done by": "migoDetails.doneBy",
-  "Dt-Inv returned to Site office": "invReturnedToSite",
-  "Dt given to Site Engineer": "siteEngineer.dateGiven",
-  "Name of Site Engineer": "siteEngineer.name",
-  "Dt given to Architect": "architect.dateGiven",
-  "Name of Architect": "architect.name",
-  "Dt given-Site Incharge": "siteIncharge.dateGiven",
-  "Name-Site Incharge": "siteIncharge.name",
-  "Remarks": "remarks",
-  "Remarks ": "remarks",
-  "Dt given to Site Office for dispatch": "siteOfficeDispatch.dateGiven",
-  "Name-Site Office": "siteOfficeDispatch.name",
-  "Status": "status"
-};
-
 // Function to patch bills from Excel/CSV without creating new records
 const patchBillsFromExcel = async (req, res) => {
   try {
@@ -565,7 +496,7 @@ const patchBillsFromExcel = async (req, res) => {
     }
     
     // UPDATED: Combine already existing bills that were updated into the updated count
-    const updatedCount = importResult.updated.length;
+    const updatedCount = importResult.updated || 0;
     const updatedExistingCount = importResult.alreadyExistingBills?.filter(b => b.updating).length || 0;
     const totalUpdated = updatedCount + updatedExistingCount;
     
@@ -579,8 +510,14 @@ const patchBillsFromExcel = async (req, res) => {
       },
       data: {
         updated: [
-          ...importResult.updated.map(bill => ({ _id: bill._id, srNo: bill.srNo })),
-          ...importResult.alreadyExistingBills?.filter(b => b.updating).map(bill => ({ _id: bill._id, srNo: bill.srNo })) || []
+          ...(Array.isArray(importResult.updated) ? importResult.updated.map(bill => ({ 
+            _id: bill._id, 
+            srNo: bill.srNo 
+          })) : []),
+          ...(importResult.alreadyExistingBills?.filter(b => b.updating).map(bill => ({ 
+            _id: bill._id, 
+            srNo: bill.srNo 
+          })) || [])
         ],
         skipped: importResult.nonExistentVendors
       }
@@ -595,149 +532,149 @@ const patchBillsFromExcel = async (req, res) => {
   }
 };
 
-// Add a new endpoint to fix srNo formatting for existing bills
-const fixBillSerialNumbers = async (req, res) => {
-  try {
-    const { bills } = req.body;
+// // Add a new endpoint to fix srNo formatting for existing bills
+// const fixBillSerialNumbers = async (req, res) => {
+//   try {
+//     const { bills } = req.body;
     
-    if (!bills || !Array.isArray(bills)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid input. Expected array of bill IDs"
-      });
-    }
+//     if (!bills || !Array.isArray(bills)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid input. Expected array of bill IDs"
+//       });
+//     }
     
-    const results = [];
-    let successCount = 0;
+//     const results = [];
+//     let successCount = 0;
     
-    for (const item of bills) {
-      try {
-        const bill = await Bill.findById(item._id);
+//     for (const item of bills) {
+//       try {
+//         const bill = await Bill.findById(item._id);
         
-        if (!bill) {
-          results.push({
-            _id: item._id,
-            status: 'failed',
-            message: 'Bill not found'
-          });
-          continue;
-        }
+//         if (!bill) {
+//           results.push({
+//             _id: item._id,
+//             status: 'failed',
+//             message: 'Bill not found'
+//           });
+//           continue;
+//         }
         
-        // Store original srNo as excelSrNo if not already set
-        if (!bill.excelSrNo) {
-          bill.excelSrNo = bill.srNo;
-        }
+//         // Store original srNo as excelSrNo if not already set
+//         if (!bill.excelSrNo) {
+//           bill.excelSrNo = bill.srNo;
+//         }
         
-        // Format srNo with 2425 prefix - ensure srNo is a string first
-        const srNoStr = String(bill.srNo || '');
-        const numericPart = srNoStr.replace(/\D/g, '');
-        bill.srNo = `2425${numericPart.padStart(5, '0')}`;
+//         // Format srNo with 2425 prefix - ensure srNo is a string first
+//         const srNoStr = String(bill.srNo || '');
+//         const numericPart = srNoStr.replace(/\D/g, '');
+//         bill.srNo = `2425${numericPart.padStart(5, '0')}`;
         
-        // Set import mode to ensure proper handling
-        bill._importMode = true;
+//         // Set import mode to ensure proper handling
+//         bill._importMode = true;
         
-        await bill.save();
+//         await bill.save();
         
-        results.push({
-          _id: bill._id,
-          status: 'success',
-          oldSrNo: bill.excelSrNo,
-          newSrNo: bill.srNo
-        });
+//         results.push({
+//           _id: bill._id,
+//           status: 'success',
+//           oldSrNo: bill.excelSrNo,
+//           newSrNo: bill.srNo
+//         });
         
-        successCount++;
-      } catch (err) {
-        console.error(`Error processing bill ${item._id}:`, err);
-        results.push({
-          _id: item._id,
-          status: 'error',
-          message: err.message
-        });
-      }
-    }
+//         successCount++;
+//       } catch (err) {
+//         console.error(`Error processing bill ${item._id}:`, err);
+//         results.push({
+//           _id: item._id,
+//           status: 'error',
+//           message: err.message
+//         });
+//       }
+//     }
     
-    return res.status(200).json({
-      success: true,
-      message: `Successfully updated ${successCount} out of ${bills.length} bills`,
-      results
-    });
-  } catch (error) {
-    console.error('Fix serial numbers error:', error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fix serial numbers",
-      error: error.message
-    });
-  }
-};
+//     return res.status(200).json({
+//       success: true,
+//       message: `Successfully updated ${successCount} out of ${bills.length} bills`,
+//       results
+//     });
+//   } catch (error) {
+//     console.error('Fix serial numbers error:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fix serial numbers",
+//       error: error.message
+//     });
+//   }
+// };
 
-// Add a bulk update function to fix all existing bills
-const bulkFixSerialNumbers = async (req, res) => {
-  try {
-    // Find all bills that don't have the correct format
-    const billsToFix = await Bill.find({
-      srNo: { $not: /^2425/ } // Find all bills whose srNo doesn't start with 2425
-    }).limit(req.query.limit ? parseInt(req.query.limit) : 1000);
+// // Add a bulk update function to fix all existing bills
+// const bulkFixSerialNumbers = async (req, res) => {
+//   try {
+//     // Find all bills that don't have the correct format
+//     const billsToFix = await Bill.find({
+//       srNo: { $not: /^2425/ } // Find all bills whose srNo doesn't start with 2425
+//     }).limit(req.query.limit ? parseInt(req.query.limit) : 1000);
     
-    console.log(`Found ${billsToFix.length} bills with incorrect srNo format`);
+//     console.log(`Found ${billsToFix.length} bills with incorrect srNo format`);
     
-    let updated = 0;
-    let failed = 0;
-    const results = [];
+//     let updated = 0;
+//     let failed = 0;
+//     const results = [];
     
-    for (const bill of billsToFix) {
-      try {
-        // Store original srNo if not already stored
-        if (!bill.excelSrNo) {
-          bill.excelSrNo = bill.srNo;
-        }
+//     for (const bill of billsToFix) {
+//       try {
+//         // Store original srNo if not already stored
+//         if (!bill.excelSrNo) {
+//           bill.excelSrNo = bill.srNo;
+//         }
         
-        // Extract numeric part - ensure srNo is a string first
-        const srNoStr = String(bill.srNo || '');
-        const numericPart = srNoStr.replace(/\D/g, '');
-        const originalSrNo = bill.srNo;
+//         // Extract numeric part - ensure srNo is a string first
+//         const srNoStr = String(bill.srNo || '');
+//         const numericPart = srNoStr.replace(/\D/g, '');
+//         const originalSrNo = bill.srNo;
         
-        // Format with 2425 prefix
-        bill.srNo = `2425${numericPart.padStart(5, '0')}`;
+//         // Format with 2425 prefix
+//         bill.srNo = `2425${numericPart.padStart(5, '0')}`;
         
-        // Set import mode to ensure proper handling
-        bill._importMode = true;
+//         // Set import mode to ensure proper handling
+//         bill._importMode = true;
         
-        await bill.save();
-        updated++;
+//         await bill.save();
+//         updated++;
         
-        results.push({
-          _id: bill._id,
-          oldSrNo: originalSrNo,
-          newSrNo: bill.srNo,
-          excelSrNo: bill.excelSrNo
-        });
-      } catch (error) {
-        console.error(`Error fixing bill ${bill._id}:`, error);
-        failed++;
-      }
-    }
+//         results.push({
+//           _id: bill._id,
+//           oldSrNo: originalSrNo,
+//           newSrNo: bill.srNo,
+//           excelSrNo: bill.excelSrNo
+//         });
+//       } catch (error) {
+//         console.error(`Error fixing bill ${bill._id}:`, error);
+//         failed++;
+//       }
+//     }
     
-    return res.status(200).json({
-      success: true,
-      message: `Fixed ${updated} bill serial numbers (${failed} failed)`,
-      totalProcessed: billsToFix.length,
-      results: results
-    });
-  } catch (error) {
-    console.error('Bulk fix error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error fixing serial numbers',
-      error: error.message
-    });
-  }
-};
+//     return res.status(200).json({
+//       success: true,
+//       message: `Fixed ${updated} bill serial numbers (${failed} failed)`,
+//       totalProcessed: billsToFix.length,
+//       results: results
+//     });
+//   } catch (error) {
+//     console.error('Bulk fix error:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Error fixing serial numbers',
+//       error: error.message
+//     });
+//   }
+// };
 
 export default { 
   generateReport,
   importBills,
-  patchBillsFromExcel,
-  fixBillSerialNumbers,
-  bulkFixSerialNumbers
+  patchBillsFromExcel
+  // fixBillSerialNumbers,
+  // bulkFixSerialNumbers
 };

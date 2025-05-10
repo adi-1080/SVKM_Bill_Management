@@ -5,6 +5,11 @@ import path from 'path';
 import mongoose from "mongoose";
 import Bill from "../models/bill-model.js";  // Add this import
 import RegionMaster from "../models/region-master-model.js";
+import CurrencyMaster from "../models/currency-master-model.js";
+import NatureOfWorkMaster from "../models/nature-of-work-master-model.js";
+import VendorMaster from "../models/vendor-master-model.js";
+import PanStatusMaster from "../models/pan-status-master-model.js";
+import ComplianceMaster from "../models/compliance-master-model.js"; // Add this import
 
 // Complete fields array matching Excel columns
 export const fields = [
@@ -212,7 +217,7 @@ export const parseDate = (dateString) => {
         // Handle 2-digit years
         const adjustedYear = year < 100 ? (year < 50 ? 2000 + year : 1900 + year) : year;
         
-        const manualDate = new Date(adjustedYear, month, day);
+        const manualDate = new Date(adjustedYear, month, day, 12, 0, 0);
         if (!isNaN(manualDate.getTime())) {
           return manualDate;
         }
@@ -310,6 +315,11 @@ export const convertTypes = (data) => {
   
   if (result.advanceAmt && typeof result.advanceAmt === 'string') {
     result.advanceAmt = parseAmount(result.advanceAmt);
+  }
+  
+  // Handle compliance206AB as an object reference, not a string
+  if (result.compliance206AB && typeof result.compliance206AB === 'string') {
+    // Keep as string for now, we'll convert to ObjectId in validateRequiredFields
   }
   
   // Parse basic date fields
@@ -560,65 +570,49 @@ export const createTempFilePath = (prefix, extension) => {
 
 // Helper: convert Excel serial number to new format with full financial year
 export const convertExcelSrNo = (excelSrNo) => {
-  console.log(`convertExcelSrNo - Input value: "${excelSrNo}"`);
-  
   if (!excelSrNo) return null;
   
   const srNoStr = String(excelSrNo).trim();
-  console.log(`convertExcelSrNo - Converted to string: "${srNoStr}"`);
   
-  // Check if the srNo already has the correct format (starts with 2425)
-  if (srNoStr.startsWith('2425')) {
-    console.log(`convertExcelSrNo - Serial number already has correct format: "${srNoStr}"`);
+  // Check if the srNo already has the correct format (starts with 25)
+  if (srNoStr.startsWith('25')) {
     return srNoStr;
   }
   
-  if (srNoStr.length < 3) return srNoStr;
+  // New financial year is 25-26, so prefix should be 25
+  // Extract the numeric part and ignore any existing prefix
+  const numericPart = srNoStr.replace(/\D/g, '');
   
-  // Extract the year part (first two digits)
-  const yearPart = srNoStr.substring(0, 2);
-  const restPart = srNoStr.substring(2);
-  console.log(`convertExcelSrNo - Extracted parts: yearPart="${yearPart}", restPart="${restPart}"`);
-  
-  // Convert year to number and calculate next year
-  const yearNum = parseInt(yearPart, 10);
-  const nextYearNum = yearNum + 1;
-  
-  // Create full financial year (e.g., 2425 for FY 2024-25)
-  const fullFinancialYear = `${yearPart}${nextYearNum < 10 ? '0' + nextYearNum : nextYearNum}`;
-  console.log(`convertExcelSrNo - Full financial year: ${fullFinancialYear}`);
-  
-  // Format new serial number with full financial year
-  const result = `${fullFinancialYear}${restPart}`;
-  console.log(`convertExcelSrNo - Final result: "${result}"`);
+  // Create the new serial number with 25 prefix and padded numeric part
+  const result = `25${numericPart.padStart(5, '0')}`;
   
   return result;
 };
 
 // Helper function to find next available serial number
 export const findNextAvailableSrNo = async (basePrefix, baseNumber) => {
-  // Find the highest existing srNo with the same prefix
-  const latestBill = await Bill.findOne({
-    srNo: { $regex: `^${basePrefix}` }
-  }).sort({ srNo: -1 });
+  // Use the new financial year prefix 25 instead of the provided prefix
+  const prefix = '25';
   
-  console.log(`Checking for latest bill with prefix ${basePrefix}, found:`, latestBill?.srNo);
+  // Find the highest existing srNo with the 25 prefix
+  const latestBill = await Bill.findOne({
+    srNo: { $regex: `^${prefix}` }
+  }).sort({ srNo: -1 });
   
   let nextNumber = baseNumber;
   
   if (latestBill) {
     // Extract the numeric part from the latest srNo
     const latestSrNo = latestBill.srNo;
-    const restPart = parseInt(latestSrNo.substring(basePrefix.length), 10);
+    const restPart = parseInt(latestSrNo.substring(prefix.length), 10);
     
     // Use whichever is higher - our base number or the latest + 1
     nextNumber = Math.max(baseNumber, restPart + 1);
-    console.log(`Latest number in DB: ${restPart}, next available: ${nextNumber}`);
   }
   
   // Format to have leading zeros
   const paddedNumber = String(nextNumber).padStart(5, '0');
-  return `${basePrefix}${paddedNumber}`;
+  return `${prefix}${paddedNumber}`;
 };
 
 // Add validation function for required fields with defaults
@@ -630,13 +624,12 @@ export const validateRequiredFields = async (data) => {
     'vendorName',
     'gstNumber',
     'compliance206AB',
-    'panStatus',
     'poCreated',
     'billDate',
     'amount',
-    'currency',
-    'region',
-    'natureOfWork'
+    'taxInvRecdAtSite',
+    'taxInvRecdBy',
+    'department'
   ];
 
   // Apply defaults and validations
@@ -647,15 +640,14 @@ export const validateRequiredFields = async (data) => {
     vendorName: "Default Vendor",
     gstNumber: "NOTPROVIDED",
     compliance206AB: "206AB check on website",
-    panStatus: "PAN operative/N.A.",
     poCreated: "No",
     billDate: new Date().toISOString().split('T')[0],
     amount: 0,
-    currency: "INR",
-    region: "MUMBAI",
-    natureOfWork: "Others",
+    department: "DEFAULT",
+    taxInvRecdAtSite: new Date(),
+    taxInvRecdBy: "SYSTEM",
     attachmentType: "Others",
-    vendor: new mongoose.Types.ObjectId()
+    siteStatus: "hold"
   };
 
   // Apply defaults for missing fields
@@ -667,15 +659,164 @@ export const validateRequiredFields = async (data) => {
 
   // Always ensure vendor field is present with a valid ObjectId
   if (!data.vendor || !mongoose.Types.ObjectId.isValid(data.vendor)) {
-    data.vendor = defaults.vendor;
+    try {
+      // Try to find a vendor based on vendorName or vendorNo
+      let vendorDoc = null;
+      if (data.vendorName) {
+        vendorDoc = await VendorMaster.findOne({
+          vendorName: { $regex: new RegExp(data.vendorName, 'i') }
+        });
+      }
+      
+      if (!vendorDoc && data.vendorNo) {
+        vendorDoc = await VendorMaster.findOne({ vendorNo: data.vendorNo });
+      }
+      
+      if (vendorDoc) {
+        data.vendor = vendorDoc._id;
+      } else {
+        // If no vendor found, create a placeholder ObjectId
+        data.vendor = new mongoose.Types.ObjectId();
+      }
+    } catch (error) {
+      console.error('Error finding vendor:', error);
+      data.vendor = new mongoose.Types.ObjectId();
+    }
   }
 
+  // Handle compliance206AB reference
+  try {
+    if (data.compliance206AB) {
+      // Try to find the compliance entry by name (case-insensitive)
+      const complianceDoc = await ComplianceMaster.findOne({
+        compliance206AB: { $regex: new RegExp(data.compliance206AB, 'i') }
+      });
+      
+      if (complianceDoc) {
+        // Replace the string with a reference to the ComplianceMaster document
+        data.compliance206AB = complianceDoc._id;
+      } else {
+        // If not found, try to find any as default
+        const defaultCompliance = await ComplianceMaster.findOne();
+        if (defaultCompliance) {
+          data.compliance206AB = defaultCompliance._id;
+        } else {
+          // Last resort - create a placeholder ObjectId
+          data.compliance206AB = new mongoose.Types.ObjectId();
+        }
+      }
+    } else {
+      // If not specified, try to find any as default
+      const defaultCompliance = await ComplianceMaster.findOne();
+      if (defaultCompliance) {
+        data.compliance206AB = defaultCompliance._id;
+      } else {
+        data.compliance206AB = new mongoose.Types.ObjectId();
+      }
+    }
+  } catch (error) {
+    console.error('Error setting compliance206AB:', error);
+    data.compliance206AB = new mongoose.Types.ObjectId();
+  }
+  
   // Validate amount is a number
   data.amount = parseFloat(data.amount) || 0;
 
-  // Validate currency is valid
-  if (!['INR', 'USD', 'RMB', 'EURO'].includes(data.currency)) {
-    data.currency = 'INR';
+  // Handle currency reference
+  try {
+    if (data.currency) {
+      const currencyDoc = await CurrencyMaster.findOne({
+        currency: { $regex: new RegExp(data.currency, 'i') }
+      });
+      
+      if (currencyDoc) {
+        data.currency = currencyDoc._id;
+      } else {
+        // Try to find default INR currency
+        const inrCurrency = await CurrencyMaster.findOne({
+          currency: { $regex: /inr/i }
+        });
+        
+        if (inrCurrency) {
+          data.currency = inrCurrency._id;
+        } else {
+          // Create a placeholder but this should be unlikely
+          const defaultCurrency = await CurrencyMaster.findOne();
+          data.currency = defaultCurrency ? defaultCurrency._id : new mongoose.Types.ObjectId();
+        }
+      }
+    } else {
+      // If no currency specified, try to find INR as default
+      const defaultCurrency = await CurrencyMaster.findOne({
+        currency: { $regex: /inr/i }
+      }) || await CurrencyMaster.findOne();
+      
+      if (defaultCurrency) {
+        data.currency = defaultCurrency._id;
+      } else {
+        // Last resort - create a placeholder ObjectId
+        data.currency = new mongoose.Types.ObjectId();
+      }
+    }
+  } catch (error) {
+    console.error('Error setting currency:', error);
+    data.currency = new mongoose.Types.ObjectId();
+  }
+
+  // Handle region reference
+  try {
+    if (data.region) {
+      const normalizedInput = data.region.trim();
+      // Try to find the region in RegionMaster (case-insensitive)
+      const regionDoc = await RegionMaster.findOne({ 
+        name: { $regex: `^${normalizedInput}$`, $options: "i" } 
+      });
+      
+      if (regionDoc) {
+        data.region = regionDoc.name;
+      } else {
+        // If region not found, set to null to indicate validation failure
+        data.region = null;
+      }
+    } else {
+      // If no region specified, set to null to indicate validation failure
+      data.region = null;
+    }
+  } catch (error) {
+    console.error('Error setting region:', error);
+    data.region = null;
+  }
+
+  // Handle natureOfWork reference
+  try {
+    if (data.typeOfInv || data.natureOfWork) {
+      const workType = data.natureOfWork || data.typeOfInv;
+      // Try to find the nature of work in the master (case-insensitive)
+      const workDoc = await NatureOfWorkMaster.findOne({ 
+        natureOfWork: { $regex: new RegExp(workType, 'i') } 
+      });
+      
+      if (workDoc) {
+        data.natureOfWork = workDoc._id;
+      } else {
+        // If not found, try to find "Others" as default
+        const defaultWork = await NatureOfWorkMaster.findOne({
+          natureOfWork: { $regex: /others/i }
+        }) || await NatureOfWorkMaster.findOne();
+        
+        data.natureOfWork = defaultWork ? defaultWork._id : new mongoose.Types.ObjectId();
+      }
+    } else {
+      // If no type specified, find any as default
+      const defaultWork = await NatureOfWorkMaster.findOne({
+        natureOfWork: { $regex: /others/i }
+      }) || await NatureOfWorkMaster.findOne();
+      
+      data.natureOfWork = defaultWork ? defaultWork._id : new mongoose.Types.ObjectId();
+    }
+  } catch (error) {
+    console.error('Error setting natureOfWork:', error);
+    data.natureOfWork = new mongoose.Types.ObjectId();
   }
 
   // Ensure proper enum values for status
@@ -684,8 +825,8 @@ export const validateRequiredFields = async (data) => {
   }
   
   // Ensure proper enum values for siteStatus
-  if (data.siteStatus && !['accept', 'reject'].includes(data.siteStatus.toLowerCase())) {
-    data.siteStatus = null;
+  if (!data.siteStatus || !['accept', 'reject', 'hold', 'issue'].includes(data.siteStatus.toLowerCase())) {
+    data.siteStatus = 'hold';
   }
 
   // Ensure proper enum values for accountsDept.status
@@ -701,27 +842,6 @@ export const validateRequiredFields = async (data) => {
 
   // Fix amount mapping from taxInvAmt
   data.amount = parseAmount(data.taxInvAmt) || 0;
-
-  // Fix date handling
-  if (data.poDate) {
-    data.poDate = parseDate(data.poDate);
-  }
-  if (data.taxInvDate) {
-    data.taxInvDate = parseDate(data.taxInvDate);
-  }
-
-  // Region validation logic (dynamic)
-  if (data.region) {
-    const normalizedInput = data.region.trim();
-    // Try to find the region in RegionMaster (case-insensitive)
-    const regionDoc = await RegionMaster.findOne({ name: { $regex: `^${normalizedInput}$`, $options: "i" } });
-    if (regionDoc) {
-      data.region = regionDoc.name;
-    } else {
-      // If not found, fallback to default or leave as is
-      data.region = "MUMBAI";
-    }
-  }
 
   // If payment date is set, auto-update payment status to paid
   if (data['accountsDept.paymentDate'] && data['accountsDept.paymentDate'] !== '') {
@@ -859,46 +979,43 @@ export const serialNumberTracking = {
 
 // Helper: generate a unique serial number based on financial year prefix
 export async function generateUniqueSerialNumber(prefix) {
+  // Always use the new financial year prefix 25
+  const newPrefix = '25';
+  
   // Check if we already initialized the counter for this prefix
-  if (serialNumberTracking.lastPrefixUsed !== prefix) {
-    console.log(`Initializing serial number tracking for prefix: ${prefix}`);
-    
-    // Find the highest existing srNo with the given prefix
+  if (serialNumberTracking.lastPrefixUsed !== newPrefix) {
+    // Find the highest existing srNo with the given prefix directly from database
     const latestBill = await Bill.findOne({
-      srNo: { $regex: `^${prefix}` }
+      srNo: { $regex: `^${newPrefix}` }
     }).sort({ srNo: -1 });
     
     if (latestBill && latestBill.srNo) {
       // Extract numeric part (after the prefix)
-      const numericPart = parseInt(latestBill.srNo.substring(prefix.length), 10);
+      const numericPart = parseInt(latestBill.srNo.substring(newPrefix.length), 10);
       serialNumberTracking.lastNumberUsed = numericPart;
-      console.log(`Found highest existing serial number: ${latestBill.srNo}, numeric part: ${numericPart}`);
     } else {
       // Start from 0 if no bills exist with this prefix
       serialNumberTracking.lastNumberUsed = 0;
-      console.log(`No existing bills found with prefix ${prefix}, starting from 0`);
     }
     
-    serialNumberTracking.lastPrefixUsed = prefix;
+    serialNumberTracking.lastPrefixUsed = newPrefix;
     // Clear the used numbers set when switching to a new prefix
     serialNumberTracking.usedSerialNumbers.clear();
   }
 
   // Generate next number
   let nextNumber = serialNumberTracking.lastNumberUsed + 1;
-  let serialNumber = `${prefix}${String(nextNumber).padStart(5, '0')}`;
+  let serialNumber = `${newPrefix}${String(nextNumber).padStart(5, '0')}`;
   
   // Ensure it's not already used in this batch
   while (serialNumberTracking.usedSerialNumbers.has(serialNumber)) {
     nextNumber++;
-    serialNumber = `${prefix}${String(nextNumber).padStart(5, '0')}`;
-    console.log(`Serial number collision detected, trying next number: ${serialNumber}`);
+    serialNumber = `${newPrefix}${String(nextNumber).padStart(5, '0')}`;
   }
   
   // Update tracking
   serialNumberTracking.lastNumberUsed = nextNumber;
   serialNumberTracking.usedSerialNumbers.add(serialNumber);
   
-  console.log(`Generated unique serial number: ${serialNumber}`);
   return serialNumber;
 }

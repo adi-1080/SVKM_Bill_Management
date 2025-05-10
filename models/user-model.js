@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema(
     },
     //one user can have multiple role
     role: {
-      type: String,
+      type: [String],
       enum: [
         "admin",
         "site_officer",
@@ -40,24 +40,27 @@ const userSchema = new mongoose.Schema(
         "accounts",
         "viewer",
       ],
-      default: "viewer",
+      default: ["viewer"],
     },
     //one user can have multiple deptartments
     department: {
-      type: String,
+      type: [String],
       enum: ["Site", "PIMO", "QS", "IT", "Accounts", "Management", "Admin"],
       required: true,
     },
     //one user can have multiple region
     region: {
-      type: String,
-      default: "MUMBAI",
+      type: [String],
+      default: ["MUMBAI"],
       validate: {
-        validator: async function(value) {
-          if (!value) return false;
-          if (value === "ALL") return true;
-          const region = await RegionMaster.findOne({ name: value.toUpperCase() });
-          return !!region;
+        validator: async function(values) {
+          if(!values || values.length==0) return false;
+          if (values.includes("ALL")) return true;
+          for (const value of values){
+            const region=await RegionMaster.find({name:value.toString().toUpperCase()})
+            if(!region) return false;
+          }
+          return true;
         },
         message: props => `Region '${props.value}' does not exist in RegionMaster.`
       }

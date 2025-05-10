@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import Bill from "../models/bill-model.js";
+import { Parser } from "json2csv";
 
 // Utility to flatten bill object with nested fields
 const flattenBill = (bill) => {
@@ -382,4 +383,47 @@ const formatValue = (value) => {
   if (typeof value === 'number') return formatCurrency(value);
   if (value instanceof Date) return formatDate(value);
   return value.toString();
+};
+
+// CSV Export Function
+export const exportBillsToCSV = async (billIds) => {
+  try {
+    const bills = await Bill.find({ _id: { $in: billIds } }).lean();
+    
+    if (!bills || bills.length === 0) {
+      // Return an empty CSV with headers if no bills found
+      return Buffer.from('No data found for the selected bills', 'utf-8');
+    }
+    
+    // Flatten each bill to handle nested fields
+    const flattenedBills = bills.map(bill => flattenBill(bill));
+    
+    // Define fields based on the first bill's structure
+    const fields = Object.keys(flattenedBills[0]).map(key => ({
+      label: key,
+      value: key
+    }));
+    
+    // Create parser with proper options
+    const json2csvParser = new Parser({ 
+      fields,
+      delimiter: ',',
+      quote: '"',
+      header: true,
+      defaultValue: '',
+      excelStrings: true
+    });
+    
+    // Convert to CSV format with error handling
+    try {
+      const csv = json2csvParser.parse(flattenedBills);
+      return Buffer.from(csv, 'utf-8');
+    } catch (parseError) {
+      console.error('Error parsing bills to CSV:', parseError);
+      throw new Error(`Failed to convert bills to CSV format: ${parseError.message}`);
+    }
+  } catch (error) {
+    console.error('Error in exportBillsToCSV:', error);
+    throw error;
+  }
 };
