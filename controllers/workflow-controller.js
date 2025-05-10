@@ -115,7 +115,13 @@ export const changeBatchWorkflowState = async (req, res) => {
 
     for (const billId of billIds) {
       try {
-        const billFound = await Bill.findById(billId);
+        const billFound = await Bill.findById(billId)
+              .populate("region")
+              .populate("panStatus")
+              .populate("currency")
+              .populate("natureOfWork")
+              .populate("compliance206AB");
+            // Map region, panStatus, complianceMaster, currency, and natureOfWork to their names
         if (!billFound) {
           results.failed.push({
             billId,
@@ -123,7 +129,7 @@ export const changeBatchWorkflowState = async (req, res) => {
           });
           continue;
         }
-
+        console.log("Bill : ", billFound);
         if (billFound.siteStatus === "rejected") {
           results.failed.push({
             billId,
@@ -141,12 +147,12 @@ export const changeBatchWorkflowState = async (req, res) => {
           fromUser: {
             id: fromId,
             name: fromName,
-            role: fromRoleArray,
+            role: fromRoleArray[0],
           },
           toUser: {
             id: toId ? toId : null,
             name: toName,
-            role: toRoleArray,
+            role: toRoleArray[0],
           },
           billId,
           action,
@@ -178,81 +184,101 @@ export const changeBatchWorkflowState = async (req, res) => {
         ) 
         {
           let setObj = { maxCount: 1, currentCount: 1 };
-          
-          if (toRoleArray.includes("quality_engineer" && billFound.natureOfWork != "Service")) {
-            console.log(
-              `Forwarding bill ${billId} to Quality Inspector from Site Officer`
-            );
-            setObj["qualityEngineer.dateGiven"] = now;
-            setObj["qualityEngineer.name"] = toName;
-          } 
-          else if (toRoleArray.includes("qs_measurement")) {
-              if(billFound.qsMeasurementCheck.dateGiven){
-              console.log(
-                `Forwarding bill ${billId} to Quantity Surveyor for Measurement from Site Officer`
-              );
+          if (toRoleArray.includes("quality_engineer")) {
+            if (billFound.natureOfWork == "Service") {
+              results.failed.push({
+                billId,
+                message: "Service Bills cannot be forwarded to Quality Engineer",
+              });
+              continue;
+            } else {
+              console.log(`Forwarding bill ${billId} to Quality Inspector from Site Officer`);
+              setObj["qualityEngineer.dateGiven"] = now;
+              setObj["qualityEngineer.name"] = toName;
+            }
+          } else if (toRoleArray.includes("qs_measurement")) {
+            if (billFound.qsMeasurementCheck.dateGiven) {
+              console.log(`Forwarding bill ${billId} to Quantity Surveyor for Measurement from Site Officer`);
               setObj["qsInspection.dateGiven"] = now;
               setObj["qsInspection.name"] = toName;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to QS Measurement: qsMeasurementCheck.dateGiven not set",
+              });
+              continue;
             }
-          }
-          else if (toRoleArray.includes("qs_cop")) {
-              if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven){
-              console.log(
-                `Forwarding bill ${billId} to Quantity Surveyor for COP from Site Officer`
-              );
+          } else if (toRoleArray.includes("qs_cop")) {
+            if (billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven) {
+              console.log(`Forwarding bill ${billId} to Quantity Surveyor for COP from Site Officer`);
               setObj["qsCOP.dateGiven"] = now;
               setObj["qsCOP.name"] = toName;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to QS COP: Required QS Measurement and Inspection dates not set",
+              });
+              continue;
             }
-          }
-          else if (toRoleArray.includes("migo_entry")) {
-            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
-              
-              console.log(
-                  `Forwarding bill ${billId} to MIGO ENtry from Site Officer`
-              );
+          } else if (toRoleArray.includes("migo_entry")) {
+            if (billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven) {
+              console.log(`Forwarding bill ${billId} to MIGO ENtry from Site Officer`);
               setObj["migoDetails.dateGiven"] = now;
-              setObj["migoDetails.name"]= toName;
-
+              setObj["migoDetails.doneBy"] = toName;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to MIGO Entry: Required QS Measurement, Inspection, and COP dates not set",
+              });
+              continue;
             }
-          }
-          else if (toRoleArray.includes("site_engineer")) {
-             if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven){
-              console.log(
-                `Forwarding bill ${billId} to Site Engineer from Site Officer`
-              );
+          } else if (toRoleArray.includes("site_engineer")) {
+            if (billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven) {
+              console.log(`Forwarding bill ${billId} to Site Engineer from Site Officer`);
               setObj["siteEngineer.dateGiven"] = now;
               setObj["siteEngineer.name"] = toName;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to Site Engineer: Required QS Measurement, Inspection, and COP dates not set",
+              });
+              continue;
             }
-          } 
-
-          else if (toRoleArray.includes("site_architect")) {
-            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.natureOfWork != "Material"){
-              console.log(
-                `Forwarding bill ${billId} to Site Architect from Site Officer`
-              );
+          } else if (toRoleArray.includes("site_architect")) {
+            if (billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.natureOfWork != "Material") {
+              console.log(`Forwarding bill ${billId} to Site Architect from Site Officer`);
               setObj["architect.dateGiven"] = now;
               setObj["architect.name"] = toName;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to Site Architect: Required QS Measurement, Inspection, COP, Site Engineer dates not set or natureOfWork is Material",
+              });
+              continue;
             }
-
           } else if (toRoleArray.includes("site_incharge")) {
-            f(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven)
-            {
-              console.log(
-                `Forwarding bill ${billId} to Site Incharge from Site Officer`
-              );
+            if (billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven) {
+              console.log(`Forwarding bill ${billId} to Site Incharge from Site Officer`);
               setObj["siteIncharge.dateGiven"] = now;
               setObj["siteIncharge.name"] = toName;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to Site Incharge: Required QS Measurement, Inspection, COP, Site Engineer, Architect dates not set",
+              });
+              continue;
             }
-
-          } 
-          else if (toRoleArray.includes("site_dispatch_team")) {
-            if(billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven && billFound.siteIncharge.dateGiven){
-
-              console.log(
-                `Forwarding bill ${billId} to Site Dispatch Team from Site Officer`
-              );
+          } else if (toRoleArray.includes("site_dispatch_team")) {
+            if (billFound.qsMeasurementCheck.dateGiven && billFound.qsInspection.dateGiven && billFound.qsCOP.dateGiven && billFound.siteEngineer.dateGiven && billFound.architect.dateGiven && billFound.siteIncharge.dateGiven) {
+              console.log(`Forwarding bill ${billId} to Site Dispatch Team from Site Officer`);
               setObj["siteOfficeDispatch.name"] = toName;
               setObj["siteOfficeDispatch.dateGiven"] = now;
+            } else {
+              results.failed.push({
+                billId,
+                message: "Cannot forward to Site Dispatch Team: Required QS Measurement, Inspection, COP, Site Engineer, Architect, Site Incharge dates not set",
+              });
+              continue;
             }
           } 
           billWorkflow = await Bill.findByIdAndUpdate(
@@ -366,19 +392,29 @@ export const changeBatchWorkflowState = async (req, res) => {
               setObj["itDept.name"] = toName;
             }
             else if(toRoleArray.includes("ses_team")){
-              if(billFound.itDept.dateGiven)
-              {
+              if (billFound.itDept.dateGiven) {
                 console.log(`Forwarding bill ${billId} to SES Team from PIMO Mumbai`);
                 setObj["sesDetails.dateGiven"] = now;
                 setObj["sesDetails.doneBy"] = toName;
+              } else {
+                results.failed.push({
+                  billId,
+                  message: "Cannot forward to SES Team: IT Department dateGiven not set",
+                });
+                continue;
               }
             }
-            else if(toRoleArray.inclues("pimo_dispatch_team")){
-              if(billFound.sesDetails.dateGiven && billFound.itDept.dateGiven)
-              {
+            else if(toRoleArray.includes("pimo_dispatch_team")){
+              if (billFound.sesDetails.dateGiven && billFound.itDept.dateGiven) {
                 console.log(`Forwarding bill ${billId} to PIMO Dispatch Team from PIMO Mumbai`);
                 setObj["pimo.dateReceivedFromIT"] = now;
                 setObj["pimo.dateReceivedFromPIMO"] = now;
+              } else {
+                results.failed.push({
+                  billId,
+                  message: "Cannot forward to PIMO Dispatch Team: SES and IT Department dateGiven not set",
+                });
+                continue;
               }
             }
             else if(toRoleArray.includes("trustees")){
@@ -386,6 +422,13 @@ export const changeBatchWorkflowState = async (req, res) => {
               {
                 console.log(`Forwarding bill ${billId} to Trustees from PIMO Mumbai`);
                 setObj["approvalDetails.directorApproval.dateGiven"] = now;
+              } 
+              else {
+                results.failed.push({
+                  billId,
+                  message: "Cannot forward to Trustees: Required conditions not met (SES, IT, PIMO dates)",
+                });
+                continue;
               }
             }
             billWorkflow = await Bill.findByIdAndUpdate(
@@ -487,6 +530,12 @@ export const changeBatchWorkflowState = async (req, res) => {
               if(billFound.accountsDept.invBookingChecking){
                 console.log(`Forwarding bill ${billId} to Payment Team from Accounts Department`);
                 setObj["accountsDept.paymentInstructions"] = now;
+              } else {
+                results.failed.push({
+                  billId,
+                  message: "Cannot forward to Payment Team: Booking date not set",
+                });
+                continue;
               }
             }
             billWorkflow = await Bill.findByIdAndUpdate(
