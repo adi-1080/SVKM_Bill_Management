@@ -189,6 +189,8 @@ const createBill = async (req, res) => {
     const newBillData = {
       ...billData,
       attachments,
+      currentCount: 1,
+      maxCount: 1
     };
     const bill = new Bill(newBillData);
     await bill.save();

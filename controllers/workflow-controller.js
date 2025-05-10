@@ -303,11 +303,11 @@ export const changeBatchWorkflowState = async (req, res) => {
               $set: {
                 currentCount: 3,
                 maxCount: Math.max(billFound.maxCount, 3),
-                "qsMumbai.dateGiven": now,
-                "qsMumbai.name": toName,
-                // Also update workflowState
-                "workflowState.currentState": "QS_Mumbai",
-                "workflowState.lastUpdated": now,
+                // "qsMumbai.dateGiven": now,
+                // "qsMumbai.name": toName,
+                // // Also update workflowState
+                // "workflowState.currentState": "QS_Mumbai",
+                // "workflowState.lastUpdated": now,
               },
               $push: {
                 "workflowState.history": {
@@ -367,6 +367,7 @@ export const changeBatchWorkflowState = async (req, res) => {
           ) &&
           action == "forward"
         ) {
+          console.log("idhar aaya")
           let setObj = {
             currentCount: 5,
             maxCount: Math.max(billFound.maxCount, 5),
@@ -383,7 +384,7 @@ export const changeBatchWorkflowState = async (req, res) => {
             );
             setObj["sesDetails.dateGiven"] = now;
             setObj["sesDetails.doneBy"] = toName;
-          } else if (toRoleArray.inclues("pimo_dispatch_team")) {
+          } else if (toRoleArray.includes("pimo_dispatch_team")) {
             console.log(
               `Forwarding bill ${billId} to PIMO Dispatch Team from PIMO Mumbai`
             );
@@ -394,12 +395,14 @@ export const changeBatchWorkflowState = async (req, res) => {
               `Forwarding bill ${billId} to Trustees from PIMO Mumbai`
             );
             setObj["approvalDetails.directorApproval.dateGiven"] = now;
+            console.log(setObj)
           }
-          billWorkflow = await Bill.findByIdAndUpdate(
+          console.log(setObj)
+         const naya_bill =  billWorkflow = await Bill.findByIdAndUpdate(
             billId,
             {
               $set: {
-                setObj,
+                ...setObj,
                 "workflowState.currentState": "Trustees",
                 "workflowState.lastUpdated": now,
               },
@@ -415,6 +418,8 @@ export const changeBatchWorkflowState = async (req, res) => {
             },
             { new: true }
           );
+
+          console.log(naya_bill)
         }
         // Trustees to PIMO Mumbai
         else if (
