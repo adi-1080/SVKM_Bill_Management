@@ -3,6 +3,7 @@ import RegionMaster from "./region-master-model.js";
 import PanStatusMaster from "./pan-status-master-model.js";
 import ComplianceMaster from "./compliance-master-model.js";
 
+
 //redundant master tables ko isme daal diya
 const billSchema = new mongoose.Schema(
     {
@@ -312,6 +313,13 @@ const billSchema = new mongoose.Schema(
             ref: "ComplianceMaster",
             required: false
         },
+        attachments: [
+            {
+                fileName: { type: String },
+                fileKey: { type: String },
+                fileUrl: { type: String },
+            }
+        ]
     },
     { timestamps: true }
 );
@@ -394,11 +402,18 @@ billSchema.pre("save", async function (next) {
 
     // Ensure region is always uppercase for consistency
     if (this.region) {
+      if (Array.isArray(this.region)) {
+        this.region = this.region.map(r => r.toUpperCase());
+        console.log(
+          `[Pre-save] Normalized regions: "${this.region.join(", ")}"`
+        );
+      } else {
         const originalRegion = this.region;
         this.region = this.region.toUpperCase();
         console.log(
-            `[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`
+          `[Pre-save] Normalized region: "${originalRegion}" → "${this.region}"`
         );
+      }
     }
 
     // Auto-update payment status to 'paid' when payment date is added
