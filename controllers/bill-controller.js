@@ -15,13 +15,11 @@ import { s3Upload } from "../utils/s3.js";
 const getFinancialYearPrefix = (date) => {
   const d = date || new Date();
   let currentYear = d.getFullYear().toString().substr(-2);
-  let nextYear = (parseInt(currentYear) + 1).toString().padStart(2, "0");
-
   if (d.getMonth() >= 3) {
-    return `${currentYear}${nextYear}`;
+    return `${currentYear}`;
   } else {
     let prevYear = (parseInt(currentYear) - 1).toString().padStart(2, "0");
-    return `${prevYear}${currentYear}`;
+    return `${prevYear}`;
   }
 };
 
@@ -78,6 +76,7 @@ const createBill = async (req, res) => {
       const serialPart = parseInt(highestSerialBill.srNo.substring(4));
       nextSerial = serialPart + 1;
     }
+    console.log(`[Create] Highest serial number found: ${highestSerialBill?.srNo}, next serial: ${nextSerial}`);
 
     const serialFormatted = nextSerial.toString().padStart(5, "0");
     const newSrNo = `${fyPrefix}${serialFormatted}`;
@@ -92,14 +91,7 @@ const createBill = async (req, res) => {
         billData.srNo = newSrNo;
         continue;
       }
-      if (field === "workflowState") {
-        billData.workflowState = {
-          currentState: "Site_Officer",
-          history: [],
-          lastUpdated: new Date(),
-        };
-        continue;
-      }
+      if (field.startsWith("workflowState.")) continue; 
       if (field === "panStatus" && req.body.panStatus) {
         // If panStatus is a string, look up the master
         let panStatusDoc = null;
@@ -182,12 +174,17 @@ const createBill = async (req, res) => {
         billData.compliance206AB = complianceDoc ? complianceDoc._id : null;
         continue;
       }
+      
       billData[field] = req.body[field] !== undefined ? req.body[field] : null;
     }
-    // ...existing code for vendor check, etc...
 
     const newBillData = {
       ...billData,
+      workflowState:{
+        currentState: "Site_Officer",
+        history: [],
+        lastUpdated: new Date(),
+      },
       attachments,
       currentCount: 1,
       maxCount: 1

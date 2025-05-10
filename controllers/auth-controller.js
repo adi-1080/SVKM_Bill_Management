@@ -34,13 +34,31 @@ export const register = async (req, res) => {
     }
     
     // Create the user
+    if (!role) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide at least one role"
+      });
+    }
+    if (!department) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide at least one department"
+      });
+    }
+    if (!region) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide at least one region"
+      });
+    }
     const user = await User.create({
       name,
       email,
       password,
-      role: role || 'viewer', // Default to viewer if no role specified
-      department,
-      region: region || 'MUMBAI'
+      role: Array.isArray(role) ? role : [role],
+      department: Array.isArray(department) ? department : [department],
+      region: Array.isArray(region) ? region : [region]
     });
     
     // Generate token and return to client
@@ -77,7 +95,12 @@ export const login = async (req, res) => {
         message: "Invalid credentials"
       });
     }
-    
+
+    // Ensure role, department, and region are always arrays (defensive, in case of legacy data)
+    if (user.role && !Array.isArray(user.role)) user.role = [user.role];
+    if (user.department && !Array.isArray(user.department)) user.department = [user.department];
+    if (user.region && !Array.isArray(user.region)) user.region = [user.region];
+
     // Check if password matches
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
