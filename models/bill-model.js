@@ -328,58 +328,18 @@ const billSchema = new mongoose.Schema(
 const getFinancialYearPrefix = (date) => {
     const d = date || new Date();
     let currentYear = d.getFullYear().toString().substr(-2);
-    let nextYear = (parseInt(currentYear) + 1).toString().padStart(2, "0");
-
     if (d.getMonth() >= 3) {
-        return `${currentYear}${nextYear}`;
+        console.log("Current Year:", currentYear);
+        return `${currentYear}`;
     } else {
         let prevYear = (parseInt(currentYear) - 1).toString().padStart(2, "0");
-        return `${prevYear}${currentYear}`;
+        console.log("Previous Year:", prevYear);
+        return `${prevYear}`;
     }
 };
 
 // Pre-save hook to handle workflow state changes and other validations
 billSchema.pre("save", async function (next) {
-    // If this is a new document (being created for the first time) and srNo is not set
-    if ((this.isNew || this._forceSerialNumberGeneration) && !this.srNo) {
-        try {
-            const fyPrefix = getFinancialYearPrefix(this.billDate);
-
-            const highestSerialBill = await this.constructor.findOne(
-                { srNo: { $regex: `^${fyPrefix}` } },
-                { srNo: 1 },
-                { sort: { srNo: -1 } }
-            );
-
-            let nextSerial = 1;
-
-            if (highestSerialBill && highestSerialBill.srNo) {
-                const serialPart = parseInt(
-                    highestSerialBill.srNo.substring(4)
-                );
-                nextSerial = serialPart + 1;
-            }
-
-            // Format with 5 digits (4 leading zeros for single digit numbers)
-            const serialFormatted = nextSerial.toString().padStart(5, "0");
-
-            this.srNo = `${fyPrefix}${serialFormatted}`;
-            console.log(`[Pre-save] Generated new srNo: ${this.srNo}`);
-
-            // Ensure import mode is DISABLED for normal bill creation
-            if (this._importMode === undefined) {
-                this._importMode = false;
-            }
-        } catch (error) {
-            console.error("[Pre-save] Error generating srNo:", error);
-            return next(error);
-        }
-    }
-
-    // Store the original srNo as excelSrNo if it hasn't been set yet
-    if (this.srNo && !this.excelSrNo) {
-        this.excelSrNo = this.srNo;
-    }
 
     // Format the srNo for imported bills
     // Explicitly check that import mode is true (boolean) before applying import formatting
@@ -493,308 +453,305 @@ billSchema.pre("save", async function (next) {
             }
         });
     }
-
+    // console.log("DEBUG1:",this.workflowState);
     // Update workflow lastUpdated timestamp whenever the document is saved
-    if (this.workflowState) {
-        this.workflowState.lastUpdated = new Date();
-    }
 
     next();
 });
 
-// Method to advance to the next state in the workflow
-billSchema.methods.moveToNextState = function (actor, comments = "") {
-    const stateOrder = [
-        "Site_Officer",
-        "Site_PIMO",
-        "QS_Site",
-        "PIMO_Mumbai",
-        "Directors",
-        "Accounts",
-        "Completed",
-    ];
-    const currentIndex = stateOrder.indexOf(this.workflowState.currentState);
+// // Method to advance to the next state in the workflow
+// billSchema.methods.moveToNextState = function (actor, comments = "") {
+//     const stateOrder = [
+//         "Site_Officer",
+//         "Site_PIMO",
+//         "QS_Site",
+//         "PIMO_Mumbai",
+//         "Directors",
+//         "Accounts",
+//         "Completed",
+//     ];
+//     const currentIndex = stateOrder.indexOf(this.workflowState.currentState);
 
-    if (currentIndex < stateOrder.length - 1) {
-        const nextState = stateOrder[currentIndex + 1];
+//     if (currentIndex < stateOrder.length - 1) {
+//         const nextState = stateOrder[currentIndex + 1];
 
-        // Record the transition in history
-        this.workflowState.history.push({
-            state: nextState,
-            timestamp: new Date(),
-            actor: actor,
-            comments: comments,
-            action: "forward",
-        });
+//         // Record the transition in history
+//         this.workflowState.history.push({
+//             state: nextState,
+//             timestamp: new Date(),
+//             actor: actor,
+//             comments: comments,
+//             action: "forward",
+//         });
 
-        // Update current state
-        this.workflowState.currentState = nextState;
-        this.workflowState.lastUpdated = new Date();
+//         // Update current state
+//         this.workflowState.currentState = nextState;
+//         this.workflowState.lastUpdated = new Date();
 
-        // Update role-specific fields based on the new state
-        this.updateRoleSpecificFields(actor, comments, nextState);
+//         // Update role-specific fields based on the new state
+//         this.updateRoleSpecificFields(actor, comments, nextState);
 
-        console.log(
-            `[Workflow] Advanced from ${stateOrder[currentIndex]} to ${nextState}`
-        );
-        return true;
-    }
+//         console.log(
+//             `[Workflow] Advanced from ${stateOrder[currentIndex]} to ${nextState}`
+//         );
+//         return true;
+//     }
 
-    return false;
-};
+//     return false;
+// };
 
-// Method to go back to the previous state in the workflow
-billSchema.methods.moveToPreviousState = function (actor, comments = "") {
-    const stateOrder = [
-        "Site_Officer",
-        "Site_PIMO",
-        "QS_Site",
-        "PIMO_Mumbai",
-        "Directors",
-        "Accounts",
-        "Completed",
-    ];
-    const currentIndex = stateOrder.indexOf(this.workflowState.currentState);
+// // Method to go back to the previous state in the workflow
+// billSchema.methods.moveToPreviousState = function (actor, comments = "") {
+//     const stateOrder = [
+//         "Site_Officer",
+//         "Site_PIMO",
+//         "QS_Site",
+//         "PIMO_Mumbai",
+//         "Directors",
+//         "Accounts",
+//         "Completed",
+//     ];
+//     const currentIndex = stateOrder.indexOf(this.workflowState.currentState);
 
-    if (currentIndex > 0) {
-        const prevState = stateOrder[currentIndex - 1];
+//     if (currentIndex > 0) {
+//         const prevState = stateOrder[currentIndex - 1];
 
-        // Record the transition in history
-        this.workflowState.history.push({
-            state: prevState,
-            timestamp: new Date(),
-            actor: actor,
-            comments: comments,
-            action: "backward",
-        });
+//         // Record the transition in history
+//         this.workflowState.history.push({
+//             state: prevState,
+//             timestamp: new Date(),
+//             actor: actor,
+//             comments: comments,
+//             action: "backward",
+//         });
 
-        // Update current state
-        this.workflowState.currentState = prevState;
-        this.workflowState.lastUpdated = new Date();
+//         // Update current state
+//         this.workflowState.currentState = prevState;
+//         this.workflowState.lastUpdated = new Date();
 
-        // Update role-specific fields based on the new state
-        this.updateRoleSpecificFields(actor, comments, prevState, "backward");
+//         // Update role-specific fields based on the new state
+//         this.updateRoleSpecificFields(actor, comments, prevState, "backward");
 
-        console.log(
-            `[Workflow] Reverted from ${stateOrder[currentIndex]} to ${prevState}`
-        );
-        return true;
-    }
+//         console.log(
+//             `[Workflow] Reverted from ${stateOrder[currentIndex]} to ${prevState}`
+//         );
+//         return true;
+//     }
 
-    return false;
-};
+//     return false;
+// };
 
-// Method to reject the bill at any point in the workflow
-billSchema.methods.rejectBill = function (actor, comments = "") {
-    const previousState = this.workflowState.currentState;
+// // Method to reject the bill at any point in the workflow
+// billSchema.methods.rejectBill = function (actor, comments = "") {
+//     const previousState = this.workflowState.currentState;
 
-    // Record the rejection in history
-    this.workflowState.history.push({
-        state: "Rejected",
-        timestamp: new Date(),
-        actor: actor,
-        comments: comments,
-        action: "reject",
-    });
+//     // Record the rejection in history
+//     this.workflowState.history.push({
+//         state: "Rejected",
+//         timestamp: new Date(),
+//         actor: actor,
+//         comments: comments,
+//         action: "reject",
+//     });
 
-    // Store rejection reason in remarks field based on previous state
-    if (previousState === "Site_Officer" || previousState === "Site_PIMO") {
-        this.remarksBySiteTeam =
-            (this.remarksBySiteTeam || "") + "\nRejection: " + comments;
-    } else if (previousState === "QS_Site") {
-        this.remarksByQSTeam =
-            (this.remarksByQSTeam || "") + "\nRejection: " + comments;
-    } else if (previousState === "PIMO_Mumbai") {
-        this.approvalDetails = this.approvalDetails || {};
-        this.approvalDetails.remarksPimoMumbai =
-            (this.approvalDetails.remarksPimoMumbai || "") +
-            "\nRejection: " +
-            comments;
-    } else if (previousState === "Directors") {
-        this.approvalDetails = this.approvalDetails || {};
-        this.approvalDetails.remarksPimoMumbai =
-            (this.approvalDetails.remarksPimoMumbai || "") +
-            "\nDirector Rejection: " +
-            comments;
-    } else if (previousState === "Accounts") {
-        this.accountsDept = this.accountsDept || {};
-        this.accountsDept.remarksAcctsDept =
-            (this.accountsDept.remarksAcctsDept || "") +
-            "\nRejection: " +
-            comments;
-    }
+//     // Store rejection reason in remarks field based on previous state
+//     if (previousState === "Site_Officer" || previousState === "Site_PIMO") {
+//         this.remarksBySiteTeam =
+//             (this.remarksBySiteTeam || "") + "\nRejection: " + comments;
+//     } else if (previousState === "QS_Site") {
+//         this.remarksByQSTeam =
+//             (this.remarksByQSTeam || "") + "\nRejection: " + comments;
+//     } else if (previousState === "PIMO_Mumbai") {
+//         this.approvalDetails = this.approvalDetails || {};
+//         this.approvalDetails.remarksPimoMumbai =
+//             (this.approvalDetails.remarksPimoMumbai || "") +
+//             "\nRejection: " +
+//             comments;
+//     } else if (previousState === "Directors") {
+//         this.approvalDetails = this.approvalDetails || {};
+//         this.approvalDetails.remarksPimoMumbai =
+//             (this.approvalDetails.remarksPimoMumbai || "") +
+//             "\nDirector Rejection: " +
+//             comments;
+//     } else if (previousState === "Accounts") {
+//         this.accountsDept = this.accountsDept || {};
+//         this.accountsDept.remarksAcctsDept =
+//             (this.accountsDept.remarksAcctsDept || "") +
+//             "\nRejection: " +
+//             comments;
+//     }
 
-    // Update status field
-    this.status = "reject";
+//     // Update status field
+//     this.status = "reject";
 
-    // Update current state
-    this.workflowState.currentState = "Rejected";
-    this.workflowState.lastUpdated = new Date();
+//     // Update current state
+//     this.workflowState.currentState = "Rejected";
+//     this.workflowState.lastUpdated = new Date();
 
-    console.log(`[Workflow] Rejected bill from state ${previousState}`);
-    return true;
-};
+//     console.log(`[Workflow] Rejected bill from state ${previousState}`);
+//     return true;
+// };
 
-// New method to recover a rejected bill and bring it back to a specific state
-billSchema.methods.recoverFromRejected = function (
-    targetState,
-    actor,
-    comments = ""
-) {
-    if (this.workflowState.currentState !== "Rejected") {
-        console.log("[Workflow] Cannot recover: bill is not in Rejected state");
-        return false;
-    }
+// // New method to recover a rejected bill and bring it back to a specific state
+// billSchema.methods.recoverFromRejected = function (
+//     targetState,
+//     actor,
+//     comments = ""
+// ) {
+//     if (this.workflowState.currentState !== "Rejected") {
+//         console.log("[Workflow] Cannot recover: bill is not in Rejected state");
+//         return false;
+//     }
 
-    const stateOrder = [
-        "Site_Officer",
-        "Site_PIMO",
-        "QS_Site",
-        "PIMO_Mumbai",
-        "Directors",
-        "Accounts",
-        "Completed",
-    ];
+//     const stateOrder = [
+//         "Site_Officer",
+//         "Site_PIMO",
+//         "QS_Site",
+//         "PIMO_Mumbai",
+//         "Directors",
+//         "Accounts",
+//         "Completed",
+//     ];
 
-    if (!stateOrder.includes(targetState)) {
-        console.log(
-            `[Workflow] Cannot recover: invalid target state ${targetState}`
-        );
-        return false;
-    }
+//     if (!stateOrder.includes(targetState)) {
+//         console.log(
+//             `[Workflow] Cannot recover: invalid target state ${targetState}`
+//         );
+//         return false;
+//     }
 
-    // Get the state that rejected the bill (if available)
-    let previousState = "Site_Officer"; // Default fallback
+//     // Get the state that rejected the bill (if available)
+//     let previousState = "Site_Officer"; // Default fallback
 
-    // Find the last non-rejected state from history
-    if (this.workflowState.history && this.workflowState.history.length > 0) {
-        for (let i = this.workflowState.history.length - 1; i >= 0; i--) {
-            if (this.workflowState.history[i].state !== "Rejected") {
-                previousState = this.workflowState.history[i].state;
-                break;
-            }
-        }
-    }
+//     // Find the last non-rejected state from history
+//     if (this.workflowState.history && this.workflowState.history.length > 0) {
+//         for (let i = this.workflowState.history.length - 1; i >= 0; i--) {
+//             if (this.workflowState.history[i].state !== "Rejected") {
+//                 previousState = this.workflowState.history[i].state;
+//                 break;
+//             }
+//         }
+//     }
 
-    // Record the recovery in history
-    this.workflowState.history.push({
-        state: targetState,
-        timestamp: new Date(),
-        actor: actor,
-        comments: comments,
-        action: "backward", // Treat recovery as a backward action
-    });
+//     // Record the recovery in history
+//     this.workflowState.history.push({
+//         state: targetState,
+//         timestamp: new Date(),
+//         actor: actor,
+//         comments: comments,
+//         action: "backward", // Treat recovery as a backward action
+//     });
 
-    // Update current state
-    this.workflowState.currentState = targetState;
-    this.workflowState.lastUpdated = new Date();
+//     // Update current state
+//     this.workflowState.currentState = targetState;
+//     this.workflowState.lastUpdated = new Date();
 
-    // Update status to accept (undoing the reject status)
-    this.status = "accept";
+//     // Update status to accept (undoing the reject status)
+//     this.status = "accept";
 
-    // Update role-specific fields based on the new state
-    this.updateRoleSpecificFields(actor, comments, targetState, "recovery");
+//     // Update role-specific fields based on the new state
+//     this.updateRoleSpecificFields(actor, comments, targetState, "recovery");
 
-    console.log(
-        `[Workflow] Recovered bill from Rejected state to ${targetState}`
-    );
-    return true;
-};
+//     console.log(
+//         `[Workflow] Recovered bill from Rejected state to ${targetState}`
+//     );
+//     return true;
+// };
 
-// Helper method to update role-specific fields based on workflow state
-billSchema.methods.updateRoleSpecificFields = function (
-    actor,
-    comments,
-    state,
-    action = "forward"
-) {
-    const now = new Date();
+// // Helper method to update role-specific fields based on workflow state
+// billSchema.methods.updateRoleSpecificFields = function (
+//     actor,
+//     comments,
+//     state,
+//     action = "forward"
+// ) {
+//     const now = new Date();
 
-    switch (state) {
-        case "Site_Officer":
-            // Update Site Officer specific fields
-            this.remarksBySiteTeam =
-                action === "forward"
-                    ? comments
-                    : (this.remarksBySiteTeam || "") + "\nUpdate: " + comments;
-            break;
+//     switch (state) {
+//         case "Site_Officer":
+//             // Update Site Officer specific fields
+//             this.remarksBySiteTeam =
+//                 action === "forward"
+//                     ? comments
+//                     : (this.remarksBySiteTeam || "") + "\nUpdate: " + comments;
+//             break;
 
-        case "Site_PIMO":
-            // Update Site PIMO specific fields
-            if (action === "forward") {
-                // When moving to Site_PIMO from Site_Officer
-                this.siteOfficeDispatch = this.siteOfficeDispatch || {};
-                this.siteOfficeDispatch.name = actor;
-                this.siteOfficeDispatch.dateGiven = now;
-                this.remarks = comments;
-            }
-            break;
+//         case "Site_PIMO":
+//             // Update Site PIMO specific fields
+//             if (action === "forward") {
+//                 // When moving to Site_PIMO from Site_Officer
+//                 this.siteOfficeDispatch = this.siteOfficeDispatch || {};
+//                 this.siteOfficeDispatch.name = actor;
+//                 this.siteOfficeDispatch.dateGiven = now;
+//                 this.remarks = comments;
+//             }
+//             break;
 
-        case "QS_Site":
-            // Update QS Site specific fields
-            if (action === "forward") {
-                // When moving to QS_Site
-                this.qsInspection = this.qsInspection || {};
-                this.qsInspection.dateGiven = now;
-                this.qsInspection.name = actor;
-            }
-            this.remarksByQSTeam =
-                action === "forward"
-                    ? comments
-                    : (this.remarksByQSTeam || "") + "\nUpdate: " + comments;
-            break;
+//         case "QS_Site":
+//             // Update QS Site specific fields
+//             if (action === "forward") {
+//                 // When moving to QS_Site
+//                 this.qsInspection = this.qsInspection || {};
+//                 this.qsInspection.dateGiven = now;
+//                 this.qsInspection.name = actor;
+//             }
+//             this.remarksByQSTeam =
+//                 action === "forward"
+//                     ? comments
+//                     : (this.remarksByQSTeam || "") + "\nUpdate: " + comments;
+//             break;
 
-        case "PIMO_Mumbai":
-            // Update PIMO Mumbai specific fields
-            if (action === "forward") {
-                this.pimoMumbai = this.pimoMumbai || {};
-                this.pimoMumbai.dateGiven = now;
-                this.pimoMumbai.receivedBy = actor;
-            }
-            this.approvalDetails = this.approvalDetails || {};
-            this.approvalDetails.remarksPimoMumbai =
-                action === "forward"
-                    ? comments
-                    : (this.approvalDetails.remarksPimoMumbai || "") +
-                      "\nUpdate: " +
-                      comments;
-            break;
+//         case "PIMO_Mumbai":
+//             // Update PIMO Mumbai specific fields
+//             if (action === "forward") {
+//                 this.pimoMumbai = this.pimoMumbai || {};
+//                 this.pimoMumbai.dateGiven = now;
+//                 this.pimoMumbai.receivedBy = actor;
+//             }
+//             this.approvalDetails = this.approvalDetails || {};
+//             this.approvalDetails.remarksPimoMumbai =
+//                 action === "forward"
+//                     ? comments
+//                     : (this.approvalDetails.remarksPimoMumbai || "") +
+//                       "\nUpdate: " +
+//                       comments;
+//             break;
 
-        case "Directors":
-            // Update Directors specific fields
-            if (action === "forward") {
-                this.approvalDetails = this.approvalDetails || {};
-                this.approvalDetails.directorApproval =
-                    this.approvalDetails.directorApproval || {};
-                this.approvalDetails.directorApproval.dateGiven = now;
-            }
-            break;
+//         case "Directors":
+//             // Update Directors specific fields
+//             if (action === "forward") {
+//                 this.approvalDetails = this.approvalDetails || {};
+//                 this.approvalDetails.directorApproval =
+//                     this.approvalDetails.directorApproval || {};
+//                 this.approvalDetails.directorApproval.dateGiven = now;
+//             }
+//             break;
 
-        case "Accounts":
-            // Update Accounts specific fields
-            if (action === "forward") {
-                this.accountsDept = this.accountsDept || {};
-                this.accountsDept.dateGiven = now;
-                this.accountsDept.givenBy = actor;
-            }
-            if (this.accountsDept) {
-                this.accountsDept.remarksAcctsDept =
-                    action === "forward"
-                        ? comments
-                        : (this.accountsDept.remarksAcctsDept || "") +
-                          "\nUpdate: " +
-                          comments;
-            }
-            break;
+//         case "Accounts":
+//             // Update Accounts specific fields
+//             if (action === "forward") {
+//                 this.accountsDept = this.accountsDept || {};
+//                 this.accountsDept.dateGiven = now;
+//                 this.accountsDept.givenBy = actor;
+//             }
+//             if (this.accountsDept) {
+//                 this.accountsDept.remarksAcctsDept =
+//                     action === "forward"
+//                         ? comments
+//                         : (this.accountsDept.remarksAcctsDept || "") +
+//                           "\nUpdate: " +
+//                           comments;
+//             }
+//             break;
 
-        case "Completed":
-            // Update completion specific fields
-            if (action === "forward" && this.accountsDept) {
-                this.accountsDept.status = "paid";
-            }
-            break;
-    }
-};
+//         case "Completed":
+//             // Update completion specific fields
+//             if (action === "forward" && this.accountsDept) {
+//                 this.accountsDept.status = "paid";
+//             }
+//             break;
+//     }
+// };
 
 // Improve setImportMode method
 billSchema.methods.setImportMode = function (isImport) {
